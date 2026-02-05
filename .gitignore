@@ -24,6 +24,12 @@ diff_pair_output/
 led_output/
 sim_output/
 
+# Generated assets
+assets/
+
+# PyInstaller
+*.spec.bak
+
 # Large files
 gui_screenshot.png
 

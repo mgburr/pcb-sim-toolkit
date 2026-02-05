@@ -26,7 +26,8 @@ import numpy as np
 
 # Local imports
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.parsers.yaml_loader import load_design
 from src.parsers.kicad_loader import load_kicad_pcb
@@ -34,6 +35,7 @@ from src.core.config import SimulationConfig, SimulationType
 from src.core.simulator import PCBSimulator
 from src.core.models import PCBDesign
 from src.analysis.magnetics import MagneticsAnalyzer
+from src.resource_path import get_examples_dir
 
 
 class PCBSimulatorGUI:
@@ -50,7 +52,10 @@ class PCBSimulatorGUI:
         self.design_path: Path | None = None
         self.results: list = []
         self.magnetics_data: dict | None = None
-        self.output_dir = Path("./sim_output")
+        if getattr(sys, "frozen", False):
+            self.output_dir = Path.home() / "Documents" / "PCBSimToolkit" / "sim_output"
+        else:
+            self.output_dir = Path("./sim_output")
         self.sim_thread: threading.Thread | None = None
         self.message_queue: queue.Queue = queue.Queue()
 
@@ -370,7 +375,7 @@ class PCBSimulatorGUI:
         path = filedialog.askopenfilename(
             title="Open PCB Design",
             filetypes=filetypes,
-            initialdir=Path.cwd() / "examples",
+            initialdir=get_examples_dir(),
         )
         if path:
             self._load_design(Path(path))
