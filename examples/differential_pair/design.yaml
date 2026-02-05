@@ -1,0 +1,146 @@
+# Differential pair USB 2.0 interface with decoupling
+name: usb2_differential
+width: 60
+height: 40
+
+stackup:
+  - name: F.Cu
+    type: signal
+    thickness: 0.035
+    material: copper
+  - name: Prepreg1
+    type: dielectric
+    thickness: 0.2
+    material: FR4
+    er: 4.4
+  - name: GND.Cu
+    type: ground
+    thickness: 0.035
+    material: copper
+  - name: Core
+    type: dielectric
+    thickness: 1.0
+    material: FR4
+    er: 4.4
+  - name: PWR.Cu
+    type: power
+    thickness: 0.035
+    material: copper
+  - name: Prepreg2
+    type: dielectric
+    thickness: 0.2
+    material: FR4
+    er: 4.4
+  - name: B.Cu
+    type: signal
+    thickness: 0.035
+    material: copper
+
+components:
+  - ref: V1
+    type: V
+    value: "DC 3.3"
+    pads:
+      - { name: "1", x: 3, y: 20 }
+      - { name: "2", x: 3, y: 35 }
+
+  - ref: V2
+    type: V
+    value: "SIN(1.65 0.4 480e6)"
+    pads:
+      - { name: "1", x: 3, y: 10 }
+      - { name: "2", x: 3, y: 15 }
+
+  - ref: U1
+    type: U
+    value: USB_PHY
+    footprint: QFP-48
+    pads:
+      - { name: "DP", x: 15, y: 10 }
+      - { name: "DN", x: 15, y: 15 }
+      - { name: "VCC", x: 15, y: 20 }
+      - { name: "GND", x: 15, y: 25 }
+    properties:
+      typical_power_w: 0.25
+      theta_ja: 40
+
+  - ref: J1
+    type: J
+    value: USB_A
+    footprint: USB_A_Receptacle
+    pads:
+      - { name: "DP", x: 50, y: 10 }
+      - { name: "DN", x: 50, y: 15 }
+      - { name: "VBUS", x: 50, y: 20 }
+      - { name: "GND", x: 50, y: 25 }
+
+  - ref: C1
+    type: C
+    value: 100n
+    footprint: C_0402
+    pads:
+      - { name: "1", x: 20, y: 20 }
+      - { name: "2", x: 20, y: 25 }
+
+  - ref: C2
+    type: C
+    value: 10u
+    footprint: C_0805
+    pads:
+      - { name: "1", x: 25, y: 20 }
+      - { name: "2", x: 25, y: 25 }
+
+  - ref: R1
+    type: R
+    value: 45
+    footprint: R_0402
+    pads:
+      - { name: "1", x: 30, y: 10 }
+      - { name: "2", x: 35, y: 10 }
+    properties:
+      voltage: 0.4
+
+  - ref: R2
+    type: R
+    value: 45
+    footprint: R_0402
+    pads:
+      - { name: "1", x: 30, y: 15 }
+      - { name: "2", x: 35, y: 15 }
+    properties:
+      voltage: 0.4
+
+nets:
+  - name: VCC_3V3
+    nodes: ["V1.1", "U1.VCC", "C1.1", "C2.1", "J1.VBUS"]
+  - name: GND
+    nodes: ["V1.2", "U1.GND", "C1.2", "C2.2", "J1.GND", "V2.2"]
+  - name: USB_DP
+    nodes: ["V2.1", "U1.DP", "R1.1"]
+  - name: USB_DP_OUT
+    nodes: ["R1.2", "J1.DP"]
+  - name: USB_DN
+    nodes: ["U1.DN", "R2.1"]
+  - name: USB_DN_OUT
+    nodes: ["R2.2", "J1.DN"]
+
+traces:
+  # Differential pair - matched length
+  - net: USB_DP_OUT
+    width: 0.15
+    layer: F.Cu
+    points: [[35, 10], [40, 10], [45, 10], [50, 10]]
+  - net: USB_DN_OUT
+    width: 0.15
+    layer: F.Cu
+    points: [[35, 15], [40, 15], [45, 15], [50, 15]]
+  # Power traces
+  - net: VCC_3V3
+    width: 0.5
+    layer: F.Cu
+    points: [[3, 20], [15, 20], [20, 20], [25, 20], [50, 20]]
+  # Ground
+  - net: GND
+    width: 0.5
+    layer: F.Cu
+    points: [[3, 35], [15, 25], [20, 25], [25, 25], [50, 25]]

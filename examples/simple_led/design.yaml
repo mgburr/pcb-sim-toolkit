@@ -1,0 +1,80 @@
+# Simple LED driver circuit
+# V1 -> R1 -> D1 -> GND
+name: simple_led_driver
+width: 30
+height: 25
+
+stackup:
+  - name: F.Cu
+    type: signal
+    thickness: 0.035
+    material: copper
+  - name: Prepreg
+    type: dielectric
+    thickness: 0.2
+    material: FR4
+    er: 4.4
+  - name: GND.Cu
+    type: ground
+    thickness: 0.035
+    material: copper
+  - name: Core
+    type: dielectric
+    thickness: 1.0
+    material: FR4
+    er: 4.4
+  - name: B.Cu
+    type: signal
+    thickness: 0.035
+    material: copper
+
+components:
+  - ref: V1
+    type: V
+    value: "DC 5"
+    pads:
+      - { name: "1", x: 5, y: 12 }
+      - { name: "2", x: 5, y: 18 }
+
+  - ref: R1
+    type: R
+    value: 220
+    footprint: R_0805
+    pads:
+      - { name: "1", x: 12, y: 12 }
+      - { name: "2", x: 16, y: 12 }
+    properties:
+      voltage: 3.0
+
+  - ref: D1
+    type: D
+    value: LED_RED
+    footprint: LED_0805
+    pads:
+      - { name: "1", x: 22, y: 12 }
+      - { name: "2", x: 22, y: 18 }
+    properties:
+      model: DLED
+      power_w: 0.06
+
+nets:
+  - name: VCC
+    nodes: ["V1.1", "R1.1"]
+  - name: LED_ANODE
+    nodes: ["R1.2", "D1.1"]
+  - name: GND
+    nodes: ["V1.2", "D1.2"]
+
+traces:
+  - net: VCC
+    width: 0.3
+    layer: F.Cu
+    points: [[5, 12], [12, 12]]
+  - net: LED_ANODE
+    width: 0.25
+    layer: F.Cu
+    points: [[16, 12], [22, 12]]
+  - net: GND
+    width: 0.5
+    layer: F.Cu
+    points: [[5, 18], [22, 18]]

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Simulation output directories
+demo_output/
+diff_pair_output/
+led_output/
+sim_output/
+
+# Large files
+gui_screenshot.png
+
+# pytest
+.pytest_cache/
