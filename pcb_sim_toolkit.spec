@@ -36,6 +36,7 @@ a = Analysis(
         "src.parsers",
         "src.parsers.kicad_loader",
         "src.parsers.yaml_loader",
+        "src.parsers.ipc2581_loader",
         "src.resource_path",
         # scipy submodules commonly needed
         "scipy.special",

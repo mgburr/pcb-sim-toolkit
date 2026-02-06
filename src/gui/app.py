@@ -31,6 +31,7 @@ if not getattr(sys, "frozen", False):
 
 from src.parsers.yaml_loader import load_design
 from src.parsers.kicad_loader import load_kicad_pcb
+from src.parsers.ipc2581_loader import load_ipc2581
 from src.core.config import SimulationConfig, SimulationType
 from src.core.simulator import PCBSimulator
 from src.core.models import PCBDesign
@@ -368,9 +369,10 @@ class PCBSimulatorGUI:
     def _open_design(self):
         """Open a design file dialog."""
         filetypes = [
-            ("All supported", "*.yaml *.yml *.kicad_pcb"),
+            ("All supported", "*.yaml *.yml *.kicad_pcb *.cvg"),
             ("YAML files", "*.yaml *.yml"),
             ("KiCad PCB", "*.kicad_pcb"),
+            ("IPC-2581", "*.cvg"),
         ]
         path = filedialog.askopenfilename(
             title="Open PCB Design",
@@ -386,6 +388,8 @@ class PCBSimulatorGUI:
             self._log(f"Loading design: {path}")
             if path.suffix == ".kicad_pcb":
                 self.design = load_kicad_pcb(path)
+            elif path.suffix == ".cvg":
+                self.design = load_ipc2581(path)
             else:
                 self.design = load_design(path)
             self.design_path = path

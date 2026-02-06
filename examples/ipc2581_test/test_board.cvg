@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<IPC-2581 revision="C">
+  <Content units="MM">
+    <Stackup>
+      <StackupGroup name="Primary">
+        <StackupLayer layerOrGroupRef="Top" thickness="0.035" layerFunctionType="SIGNAL" material="copper"/>
+        <StackupLayer layerOrGroupRef="Dielectric1" thickness="0.2" layerFunctionType="DIELECTRIC" material="FR-4" dielectricConstant="4.5"/>
+        <StackupLayer layerOrGroupRef="Inner1" thickness="0.035" layerFunctionType="POWER" material="copper"/>
+        <StackupLayer layerOrGroupRef="Dielectric2" thickness="1.0" layerFunctionType="CORE" material="FR-4" dielectricConstant="4.5"/>
+        <StackupLayer layerOrGroupRef="Inner2" thickness="0.035" layerFunctionType="SIGNAL" material="copper"/>
+        <StackupLayer layerOrGroupRef="Dielectric3" thickness="0.2" layerFunctionType="DIELECTRIC" material="FR-4" dielectricConstant="4.5"/>
+        <StackupLayer layerOrGroupRef="Bottom" thickness="0.035" layerFunctionType="SIGNAL" material="copper"/>
+      </StackupGroup>
+    </Stackup>
+  </Content>
+
+  <Ecad name="TestBoard">
+    <CadData>
+      <Step name="Board">
+        <Profile>
+          <Outline>
+            <Polygon>
+              <PolyBegin x="0" y="0"/>
+              <PolyStepSegment x="50" y="0"/>
+              <PolyStepSegment x="50" y="40"/>
+              <PolyStepSegment x="0" y="40"/>
+              <PolyStepSegment x="0" y="0"/>
+            </Polygon>
+          </Outline>
+        </Profile>
+
+        <Component refDes="R1" value="10k" packageRef="0402">
+          <Location x="10" y="15"/>
+          <Pin number="1">
+            <Location x="0" y="0"/>
+          </Pin>
+          <Pin number="2">
+            <Location x="1" y="0"/>
+          </Pin>
+        </Component>
+
+        <Component refDes="C1" value="100nF" packageRef="0402">
+          <Location x="25" y="15"/>
+          <Pin number="1">
+            <Location x="0" y="0"/>
+          </Pin>
+          <Pin number="2">
+            <Location x="1" y="0"/>
+          </Pin>
+        </Component>
+
+        <Component refDes="U1" value="MCU" packageRef="QFP-48">
+          <Location x="30" y="25"/>
+          <Pin number="1">
+            <Location x="0" y="0"/>
+          </Pin>
+          <Pin number="2">
+            <Location x="1" y="0"/>
+          </Pin>
+          <Pin number="3">
+            <Location x="2" y="0"/>
+          </Pin>
+        </Component>
+
+        <PhyNetGroup>
+          <PhyNet name="VCC">
+            <PinRef componentRef="R1" pin="1"/>
+            <PinRef componentRef="C1" pin="1"/>
+            <PinRef componentRef="U1" pin="1"/>
+          </PhyNet>
+          <PhyNet name="GND">
+            <PinRef componentRef="R1" pin="2"/>
+            <PinRef componentRef="C1" pin="2"/>
+            <PinRef componentRef="U1" pin="2"/>
+          </PhyNet>
+          <PhyNet name="DATA">
+            <PinRef componentRef="U1" pin="3"/>
+          </PhyNet>
+        </PhyNetGroup>
+
+        <LayerFeature layerRef="Top">
+          <Set net="VCC">
+            <Line startX="10" startY="15" endX="25" endY="15" lineWidth="0.25"/>
+            <Line startX="25" startY="15" endX="30" endY="25" lineWidth="0.25"/>
+          </Set>
+          <Set net="GND">
+            <Line startX="11" startY="15" endX="26" endY="15" lineWidth="0.2"/>
+          </Set>
+        </LayerFeature>
+
+      </Step>
+    </CadData>
+  </Ecad>
+</IPC-2581>
