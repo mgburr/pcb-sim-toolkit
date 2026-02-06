@@ -39,6 +39,20 @@ from src.analysis.magnetics import MagneticsAnalyzer
 from src.resource_path import get_examples_dir
 
 
+def _is_ipc2581_xml(path: Path) -> bool:
+    """Check if an XML file is IPC-2581 by looking at the root element."""
+    try:
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(path)
+        root = tree.getroot()
+        tag = root.tag
+        if "}" in tag:
+            tag = tag.split("}", 1)[1]
+        return tag == "IPC-2581"
+    except Exception:
+        return False
+
+
 class PCBSimulatorGUI:
     """Main GUI application for PCB simulation toolkit."""
 
@@ -369,10 +383,10 @@ class PCBSimulatorGUI:
     def _open_design(self):
         """Open a design file dialog."""
         filetypes = [
-            ("All supported", "*.yaml *.yml *.kicad_pcb *.cvg"),
+            ("All supported", "*.yaml *.yml *.kicad_pcb *.cvg *.xml"),
             ("YAML files", "*.yaml *.yml"),
             ("KiCad PCB", "*.kicad_pcb"),
-            ("IPC-2581", "*.cvg"),
+            ("IPC-2581", "*.cvg *.xml"),
         ]
         path = filedialog.askopenfilename(
             title="Open PCB Design",
@@ -389,6 +403,8 @@ class PCBSimulatorGUI:
             if path.suffix == ".kicad_pcb":
                 self.design = load_kicad_pcb(path)
             elif path.suffix == ".cvg":
+                self.design = load_ipc2581(path)
+            elif path.suffix == ".xml" and _is_ipc2581_xml(path):
                 self.design = load_ipc2581(path)
             else:
                 self.design = load_design(path)
