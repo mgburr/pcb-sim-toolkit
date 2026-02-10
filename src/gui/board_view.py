@@ -13,7 +13,7 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Polygon as MplPolygon, Circle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from ..core.models import PCBDesign, Component, ComponentType, LayerType
+from ..core.models import PCBDesign, Component
 
 
 # ---------------------------------------------------------------------------
@@ -229,54 +229,91 @@ def plot_board_2d(
 # 3D board view
 # ---------------------------------------------------------------------------
 
-def _compute_z_scale(design: PCBDesign) -> float:
-    """Compute z-axis exaggeration so thin layers are visible."""
-    total = design.stackup.total_thickness if design.stackup.layers else 1.6
-    board_extent = max(design.width, design.height, 1.0)
-    return (board_extent / 5.0) / max(total, 0.01)
+# Component height estimates (mm) by refdes prefix
+_COMP_HEIGHT: dict[str, float] = {
+    "U": 1.5, "IC": 1.5,
+    "R": 1.0, "C": 1.0, "L": 1.0,
+    "J": 2.5, "P": 2.5, "CN": 2.5,
+    "D": 0.8, "LED": 0.8,
+    "Q": 1.0, "T": 1.0,
+    "SW": 2.0,
+    "F": 1.0,
+    "Y": 1.2, "X": 1.2,
+}
+
+# Component body colour by refdes prefix
+_COMP_COLOR: dict[str, str] = {
+    "U": "#333333", "IC": "#333333",
+    "R": "#4a3728", "C": "#c2a060",
+    "L": "#556b2f", "D": "#555555", "LED": "#aa0000",
+    "Q": "#333333", "T": "#333333",
+    "J": "#777777", "P": "#777777", "CN": "#777777",
+    "SW": "#444444",
+    "F": "#665544",
+    "Y": "#888888", "X": "#888888",
+}
 
 
-def _layer_z_positions(design: PCBDesign, z_scale: float) -> dict[str, float]:
-    """Map layer names to their z-centre heights (scaled)."""
-    positions: dict[str, float] = {}
-    z = 0.0
-    for layer in design.stackup.layers:
-        mid = z + layer.thickness / 2.0
-        positions[layer.name] = mid * z_scale
-        z += layer.thickness
-    return positions
+def _comp_refdes_prefix(reference: str) -> str:
+    """Extract alphabetic prefix from a reference designator."""
+    prefix = ""
+    for ch in reference:
+        if ch.isalpha():
+            prefix += ch
+        else:
+            break
+    return prefix
 
 
-def _find_trace_z(
-    trace_layer: str,
-    layer_positions: dict[str, float],
-    z_scale: float,
-) -> float:
-    """Find the z-height for a trace given its layer name."""
-    if trace_layer in layer_positions:
-        return layer_positions[trace_layer]
-    upper = trace_layer.upper()
-    for name, z in layer_positions.items():
-        if name.upper() == upper:
-            return z
-    # Default: top surface
-    if layer_positions:
-        return max(layer_positions.values())
-    return 0.0
+def _get_comp_height(comp: Component) -> float:
+    """Estimate component height in mm from refdes prefix."""
+    prefix = _comp_refdes_prefix(comp.reference)
+    return _COMP_HEIGHT.get(prefix, 0.5)
 
 
-def _add_box(
-    ax,
+def _get_comp_color(comp: Component) -> str:
+    """Get component body colour from refdes prefix."""
+    prefix = _comp_refdes_prefix(comp.reference)
+    return _COMP_COLOR.get(prefix, "#555555")
+
+
+def _extrude_polygon(
+    polygon: list[tuple[float, float]],
+    z_top: float,
+    z_bot: float,
+) -> list[list[tuple[float, float, float]]]:
+    """Extrude a 2D polygon into a 3D prism (top, bottom, side walls)."""
+    # Ensure polygon is clean (at least 3 unique points)
+    pts = list(polygon)
+    if len(pts) >= 2 and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    if len(pts) < 3:
+        return []
+
+    faces: list[list[tuple[float, float, float]]] = []
+    # Top face
+    faces.append([(x, y, z_top) for x, y in pts])
+    # Bottom face (reversed winding for correct normals)
+    faces.append([(x, y, z_bot) for x, y in reversed(pts)])
+    # Side walls
+    n = len(pts)
+    for i in range(n):
+        j = (i + 1) % n
+        x0, y0 = pts[i]
+        x1, y1 = pts[j]
+        faces.append([
+            (x0, y0, z_top), (x1, y1, z_top),
+            (x1, y1, z_bot), (x0, y0, z_bot),
+        ])
+    return faces
+
+
+def _box_faces(
     x0: float, y0: float, z0: float,
-    dx: float, dy: float, dz: float,
-    color: str,
-    alpha: float = 0.6,
-    edgecolor: str = "#333333",
-) -> None:
-    """Add a rectangular prism (6 faces) to a 3D axes."""
-    x1, y1, z1 = x0 + dx, y0 + dy, z0 + dz
-
-    faces = [
+    x1: float, y1: float, z1: float,
+) -> list[list[tuple[float, float, float]]]:
+    """Return 6 faces for an axis-aligned rectangular prism."""
+    return [
         [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0)],  # bottom
         [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],  # top
         [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],  # front
@@ -284,28 +321,84 @@ def _add_box(
         [(x0, y0, z0), (x0, y1, z0), (x0, y1, z1), (x0, y0, z1)],  # left
         [(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)],  # right
     ]
-    collection = Poly3DCollection(
-        faces, facecolors=color, edgecolors=edgecolor,
-        linewidths=0.3, alpha=alpha,
-    )
-    ax.add_collection3d(collection)
 
 
-def _component_height(comp: Component) -> float:
-    """Estimate component height in mm based on type."""
-    heights = {
-        ComponentType.IC: 1.5,
-        ComponentType.CONNECTOR: 3.0,
-        ComponentType.TRANSISTOR_NPN: 1.0,
-        ComponentType.TRANSISTOR_PNP: 1.0,
-        ComponentType.MOSFET_N: 1.0,
-        ComponentType.MOSFET_P: 1.0,
-    }
-    return heights.get(comp.component_type, 0.5)
+def _rotate_faces(
+    faces: list[list[tuple[float, float, float]]],
+    cx: float,
+    cy: float,
+    angle_deg: float,
+) -> list[list[tuple[float, float, float]]]:
+    """Rotate all face vertices around (cx, cy) by angle_deg in the XY plane."""
+    if abs(angle_deg) < 0.01:
+        return faces
+    rad = math.radians(angle_deg)
+    cos_a, sin_a = math.cos(rad), math.sin(rad)
+    rotated: list[list[tuple[float, float, float]]] = []
+    for face in faces:
+        new_face: list[tuple[float, float, float]] = []
+        for x, y, z in face:
+            dx, dy = x - cx, y - cy
+            rx = cx + dx * cos_a - dy * sin_a
+            ry = cy + dx * sin_a + dy * cos_a
+            new_face.append((rx, ry, z))
+        rotated.append(new_face)
+    return rotated
+
+
+def _component_pad_extent(
+    comp: Component,
+) -> tuple[float, float, float, float, float, float]:
+    """Return (cx, cy, min_px, max_px, min_py, max_py) from pad bounding box.
+
+    Uses pad positions and pad dimensions (diameter as width proxy) with a
+    0.3 mm margin, matching the ipc2581-to-kicad approach.
+    """
+    if not comp.pads:
+        return 0.0, 0.0, -1.0, 1.0, -0.5, 0.5
+
+    # Compute pad-relative positions (pads store absolute coords, so we
+    # need the component centre first)
+    pad_xs = [p.x for p in comp.pads]
+    pad_ys = [p.y for p in comp.pads]
+    cx = (min(pad_xs) + max(pad_xs)) / 2.0
+    cy = (min(pad_ys) + max(pad_ys)) / 2.0
+
+    # Build extents using pad diameters as width/height
+    pad_ws = [p.diameter for p in comp.pads]
+    pad_hs = [p.diameter for p in comp.pads]
+
+    min_px = min(px - pw / 2 for px, pw in zip(pad_xs, pad_ws)) - cx
+    max_px = max(px + pw / 2 for px, pw in zip(pad_xs, pad_ws)) - cx
+    min_py = min(py - ph / 2 for py, ph in zip(pad_ys, pad_hs)) - cy
+    max_py = max(py + ph / 2 for py, ph in zip(pad_ys, pad_hs)) - cy
+
+    # Add margin
+    margin = 0.3
+    min_px -= margin
+    max_px += margin
+    min_py -= margin
+    max_py += margin
+
+    return cx, cy, min_px, max_px, min_py, max_py
+
+
+def _find_trace_z(
+    trace_layer: str,
+    thickness: float,
+) -> float:
+    """Return z-offset for a trace: top surface or bottom surface."""
+    upper = trace_layer.upper()
+    if "BOT" in upper or "BACK" in upper or "B.CU" in upper:
+        return -thickness - 0.01
+    return 0.01
 
 
 def plot_board_3d(fig: Figure, design: PCBDesign) -> None:
     """Render a 3D perspective view of the PCB.
+
+    Board top surface at z=0, extruded down to z=-thickness.
+    Components sit on the appropriate surface. No z-axis exaggeration.
 
     Parameters
     ----------
@@ -317,72 +410,105 @@ def plot_board_3d(fig: Figure, design: PCBDesign) -> None:
     fig.clear()
     ax = fig.add_subplot(111, projection="3d")
 
-    z_scale = _compute_z_scale(design)
-    layer_positions = _layer_z_positions(design, z_scale)
     net_colors = _assign_net_colors(design)
-
+    thickness = design.stackup.total_thickness if design.stackup.layers else 1.6
     outline = _board_outline_polygon(design)
-    ox = min(p[0] for p in outline)
-    oy = min(p[1] for p in outline)
 
-    # --- Stackup layers as extruded slabs ---
-    z = 0.0
-    for layer in design.stackup.layers:
-        dz = layer.thickness * z_scale
-        is_copper = layer.layer_type in (LayerType.SIGNAL, LayerType.POWER, LayerType.GROUND)
-        color = "#b87333" if is_copper else "#d2b48c"
-        alpha = 0.7 if is_copper else 0.35
-        _add_box(
-            ax,
-            ox, oy, z,
-            design.width, design.height, dz,
-            color=color, alpha=alpha,
+    # --- Board body: extrude outline polygon from z=0 to z=-thickness ---
+    board_faces = _extrude_polygon(outline, 0.0, -thickness)
+    if not board_faces:
+        # Fallback to bounding-box
+        ox = min(p[0] for p in outline)
+        oy = min(p[1] for p in outline)
+        board_faces = _box_faces(
+            ox, oy, -thickness,
+            ox + design.width, oy + design.height, 0.0,
         )
-        z += dz
+    board_coll = Poly3DCollection(
+        board_faces, facecolors="#228B22", edgecolors="#006400",
+        linewidths=0.5, alpha=0.3,
+    )
+    ax.add_collection3d(board_coll)
 
-    total_z = z  # top of the board
+    # --- Copper zones (flat polygons on surfaces) ---
+    # Top copper surface
+    if outline:
+        pts = list(outline)
+        if len(pts) >= 2 and pts[0] == pts[-1]:
+            pts = pts[:-1]
+        if len(pts) >= 3:
+            top_face = [(x, y, 0.005) for x, y in pts]
+            top_coll = Poly3DCollection(
+                [top_face], facecolors="#b87333", edgecolors="none",
+                linewidths=0, alpha=0.25,
+            )
+            ax.add_collection3d(top_coll)
+            bot_face = [(x, y, -thickness - 0.005) for x, y in pts]
+            bot_coll = Poly3DCollection(
+                [bot_face], facecolors="#b87333", edgecolors="none",
+                linewidths=0, alpha=0.25,
+            )
+            ax.add_collection3d(bot_coll)
 
-    # --- Traces as 3D lines ---
+    # --- Traces as 3D lines on surface ---
     for trace in design.traces:
         if len(trace.points) < 2:
             continue
-        tz = _find_trace_z(trace.layer, layer_positions, z_scale)
+        tz = _find_trace_z(trace.layer, thickness)
         color = net_colors.get(trace.net, "#cccccc")
         xs = [p[0] for p in trace.points]
         ys = [p[1] for p in trace.points]
         zs = [tz] * len(xs)
-        ax.plot(xs, ys, zs, color=color, linewidth=1.5, zorder=10)
+        ax.plot(xs, ys, zs, color=color, linewidth=2.0, zorder=10)
 
-    # --- Components as 3D prisms ---
+    # --- Components as rotated 3D prisms ---
     for comp in design.components:
-        cx, cy, hw, hh = _component_extent(comp)
-        ch = _component_height(comp) * z_scale
-        if comp.layer.upper() in ("BOTTOM", "BOT", "BACK", "B.CU"):
-            comp_z = -ch
-        else:
-            comp_z = total_z
+        cx, cy, min_px, max_px, min_py, max_py = _component_pad_extent(comp)
+        ch = _get_comp_height(comp)
+        comp_color = _get_comp_color(comp)
 
-        comp_color = "#333399" if comp.component_type == ComponentType.IC else "#336633"
-        _add_box(
-            ax,
-            cx - hw, cy - hh, comp_z,
-            hw * 2, hh * 2, ch,
-            color=comp_color, alpha=0.8,
+        is_bottom = comp.layer.upper() in ("BOTTOM", "BOT", "BACK", "B.CU")
+        if is_bottom:
+            z_base = -thickness
+            z_top = -thickness - ch
+        else:
+            z_base = 0.0
+            z_top = ch
+
+        faces = _box_faces(
+            cx + min_px, cy + min_py, z_base,
+            cx + max_px, cy + max_py, z_top,
         )
+        faces = _rotate_faces(faces, cx, cy, comp.rotation)
+
+        comp_coll = Poly3DCollection(
+            faces, facecolors=comp_color, edgecolors="#222222",
+            linewidths=0.4, alpha=0.85,
+        )
+        ax.add_collection3d(comp_coll)
+
+        # Label at top of component
+        label_z = z_top if not is_bottom else z_base
         ax.text(
-            cx, cy, comp_z + ch,
+            cx, cy, label_z + 0.1,
             comp.reference,
             fontsize=5, color="white", ha="center", va="bottom", zorder=20,
         )
 
     # --- Axes styling ---
+    all_xs = [p[0] for p in outline]
+    all_ys = [p[1] for p in outline]
+    margin = max(design.width, design.height) * 0.05
+    ax.set_xlim(min(all_xs) - margin, max(all_xs) + margin)
+    ax.set_ylim(min(all_ys) - margin, max(all_ys) + margin)
+    z_range = thickness + 5.0  # room for components
+    ax.set_zlim(-thickness - z_range * 0.3, z_range * 0.7)
+
     ax.set_xlabel("X (mm)", fontsize=8)
     ax.set_ylabel("Y (mm)", fontsize=8)
-    ax.set_zlabel("Z (scaled)", fontsize=8)
+    ax.set_zlabel("Z (mm)", fontsize=8)
     ax.set_title(f"3D Board View: {design.name}", fontsize=11)
     ax.tick_params(labelsize=7)
 
-    # Set reasonable view angle
     ax.view_init(elev=30, azim=-60)
-
     fig.tight_layout()
