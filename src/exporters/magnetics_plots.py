@@ -10,7 +10,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-import matplotlib.patches as mpatches
 
 
 def generate_magnetics_plots(
@@ -74,7 +73,7 @@ def _plot_bfield_magnitude(
         cmap="inferno",
         shading="gouraud",
     )
-    cbar = fig.colorbar(im, label="B-field magnitude (uT)")
+    fig.colorbar(im, label="B-field magnitude (uT)")
 
     # Overlay trace paths
     traces = design_data.get("traces", [])

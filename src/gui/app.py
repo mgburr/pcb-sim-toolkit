@@ -7,13 +7,11 @@ running analyses, and viewing results with interactive plots.
 from __future__ import annotations
 
 import json
-import os
 import queue
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
-from typing import Any, Callable
 import webbrowser
 
 # Matplotlib integration with Tkinter
@@ -299,7 +297,7 @@ class PCBSimulatorGUI:
         """Create a matplotlib canvas in the given frame."""
         fig = Figure(figsize=(8, 6), dpi=100)
         ax = fig.add_subplot(111)
-        ax.set_title(f"Load a design and run simulation")
+        ax.set_title("Load a design and run simulation")
         ax.text(0.5, 0.5, "No data", ha="center", va="center", fontsize=14, color="gray")
         ax.set_xticks([])
         ax.set_yticks([])
@@ -871,7 +869,7 @@ class PCBSimulatorGUI:
 def main():
     """Launch the GUI application."""
     root = tk.Tk()
-    app = PCBSimulatorGUI(root)
+    PCBSimulatorGUI(root)
     root.mainloop()
 
 

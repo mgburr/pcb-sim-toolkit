@@ -10,7 +10,6 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
 
 from ..core.models import PCBDesign, Trace, Stackup, Layer, LayerType
 from ..core.config import SimulationConfig, SimulationResult, SimulationType
@@ -101,7 +100,7 @@ class SignalIntegrityAnalyzer:
             )
 
         # Propagation delay
-        delay = math.sqrt(er_eff) / self.C0 * 1e9  # ns/mm -> ps/mm * 1000
+        math.sqrt(er_eff) / self.C0 * 1e9  # ns/mm -> ps/mm * 1000
         delay_ps_per_mm = math.sqrt(er_eff) / (self.C0 * 1e-3) * 1e12 / 1e6
 
         # Conductor loss at 1 GHz (approximate)

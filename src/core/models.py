@@ -96,9 +96,9 @@ class Stackup:
 
     def copper_layers(self) -> list[Layer]:
         return [
-            l
-            for l in self.layers
-            if l.layer_type in (LayerType.SIGNAL, LayerType.POWER, LayerType.GROUND)
+            layer
+            for layer in self.layers
+            if layer.layer_type in (LayerType.SIGNAL, LayerType.POWER, LayerType.GROUND)
         ]
 
 

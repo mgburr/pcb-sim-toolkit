@@ -6,12 +6,11 @@ finite-difference thermal model for the copper/FR4 stackup.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import numpy as np
 
-from ..core.models import PCBDesign, Component, ComponentType, LayerType
+from ..core.models import PCBDesign, ComponentType, LayerType
 from ..core.config import SimulationConfig, SimulationResult, SimulationType
 
 
@@ -200,16 +199,16 @@ class ThermalAnalyzer:
         # Effective thermal conductivity and thickness
         k_eff = self.K_FR4
         if design.stackup.layers:
-            total_t = sum(l.thickness for l in design.stackup.layers)
+            total_t = sum(layer.thickness for layer in design.stackup.layers)
             # Weighted average conductivity
             k_sum = sum(
-                l.thickness
+                layer.thickness
                 * (
                     self.K_COPPER
-                    if l.layer_type != LayerType.DIELECTRIC
+                    if layer.layer_type != LayerType.DIELECTRIC
                     else self.K_FR4
                 )
-                for l in design.stackup.layers
+                for layer in design.stackup.layers
             )
             k_eff = k_sum / total_t if total_t > 0 else self.K_FR4
             board_thickness = total_t * 1e-3

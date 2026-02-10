@@ -5,9 +5,7 @@ This parser handles the S-expression format used by KiCad 6+.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import Any
 
 from ..core.models import (
     PCBDesign,

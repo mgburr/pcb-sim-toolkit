@@ -11,12 +11,12 @@ a perpendicular distance r is:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
-from ..core.models import PCBDesign, Trace, ComponentType
+from ..core.models import PCBDesign, ComponentType
 from ..core.config import SimulationConfig, SimulationResult, SimulationType
 
 
@@ -189,7 +189,7 @@ class MagneticsAnalyzer:
             if not tc or len(trace.points) < 2:
                 continue
 
-            I = tc.current_a
+            current = tc.current_a
 
             # For each segment of the trace, apply Biot-Savart
             for k in range(len(trace.points) - 1):
@@ -197,7 +197,7 @@ class MagneticsAnalyzer:
                 x2, y2 = trace.points[k + 1]
 
                 bx_seg, by_seg = self._biot_savart_segment(
-                    x1, y1, x2, y2, I, X, Y, obs_height
+                    x1, y1, x2, y2, current, X, Y, obs_height
                 )
                 Bx += bx_seg
                 By += by_seg
@@ -208,7 +208,7 @@ class MagneticsAnalyzer:
     @staticmethod
     def _biot_savart_segment(
         x1: float, y1: float, x2: float, y2: float,
-        I: float,
+        current: float,
         X: np.ndarray, Y: np.ndarray,
         z_obs: float,
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -265,7 +265,7 @@ class MagneticsAnalyzer:
         cos_theta2 = (dot - seg_len) / np.maximum(r2, 1e-10)
 
         # B magnitude from finite wire: B = (mu0*I)/(4*pi*d) * (cos1 - cos2)
-        B_scalar = (MU_0 * I) / (4 * math.pi * d_perp) * (cos_theta1 - cos_theta2)
+        B_scalar = (MU_0 * current) / (4 * math.pi * d_perp) * (cos_theta1 - cos_theta2)
 
         # Direction: B is perpendicular to both the wire direction and the
         # displacement vector. In the observation plane:
