@@ -23,6 +23,8 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import math
+
 from ..core.models import (
     PCBDesign,
     Component,
@@ -30,6 +32,8 @@ from ..core.models import (
     Net,
     Trace,
     Pad,
+    PadShape,
+    PackageDef,
     Stackup,
     Layer,
     LayerType,
@@ -63,6 +67,12 @@ def load_ipc2581(path: Path) -> PCBDesign:
 
     # Parse traces
     design.traces = _parse_traces(root, unit)
+
+    # Parse pad definitions and packages, then link to components
+    pad_defs = _parse_pad_definitions(root, unit)
+    design.packages = _parse_packages(root, unit, pad_defs)
+    design.link_packages()
+    _compute_fallback_mechanical(design)
 
     return design
 
@@ -511,3 +521,269 @@ def _parse_traces(root: ET.Element, unit: str) -> list[Trace]:
                 )
 
     return traces
+
+
+# ---- Pad and package parsing ----
+
+def _parse_pad_definitions(root: ET.Element, unit: str) -> dict[str, PadShape]:
+    """Parse pad shapes from DictionaryStandard/DictionaryUser entries."""
+    pad_defs: dict[str, PadShape] = {}
+
+    for dict_elem in (_find_elements(root, "DictionaryStandard")
+                      + _find_elements(root, "DictionaryUser")):
+        dict_unit = dict_elem.attrib.get(
+            "units", dict_elem.attrib.get("unit", unit))
+
+        for entry in (_find_children(dict_elem, "EntryStandard")
+                      + _find_children(dict_elem, "EntryUser")):
+            entry_id = entry.attrib.get("id", "")
+            if not entry_id:
+                continue
+
+            shape_type = "rect"
+            width = 0.0
+            height = 0.0
+            drill_diameter = 0.0
+            plated = True
+
+            for child in entry:
+                tag = _strip_namespace(child.tag)
+                if tag == "Circle":
+                    shape_type = "circle"
+                    d = _convert_to_mm(
+                        float(child.attrib.get("diameter",
+                              child.attrib.get("radius", "0"))), dict_unit)
+                    if "radius" in child.attrib:
+                        d *= 2
+                    width = height = d
+                elif tag == "RectCenter":
+                    shape_type = "rect"
+                    width = _convert_to_mm(
+                        float(child.attrib.get("width", "0")), dict_unit)
+                    height = _convert_to_mm(
+                        float(child.attrib.get("height", "0")), dict_unit)
+                elif tag == "Oval":
+                    shape_type = "oval"
+                    width = _convert_to_mm(
+                        float(child.attrib.get("width", "0")), dict_unit)
+                    height = _convert_to_mm(
+                        float(child.attrib.get("height", "0")), dict_unit)
+                elif tag in ("Polygon", "Contour"):
+                    shape_type = "polygon"
+                    pts_x: list[float] = []
+                    pts_y: list[float] = []
+                    for pt in child.iter():
+                        pt_tag = _strip_namespace(pt.tag)
+                        if pt_tag in ("PolyBegin", "PolyStepSegment"):
+                            x_s = pt.attrib.get("x", pt.attrib.get("X"))
+                            y_s = pt.attrib.get("y", pt.attrib.get("Y"))
+                            if x_s is not None and y_s is not None:
+                                pts_x.append(_convert_to_mm(float(x_s), dict_unit))
+                                pts_y.append(_convert_to_mm(float(y_s), dict_unit))
+                    if pts_x:
+                        width = max(pts_x) - min(pts_x)
+                        height = max(pts_y) - min(pts_y)
+                elif tag in ("Drill", "DrillHole"):
+                    try:
+                        drill_diameter = _convert_to_mm(
+                            float(child.attrib.get("diameter", "0")), dict_unit)
+                    except ValueError:
+                        pass
+                    plated_str = child.attrib.get("plated", "true").lower()
+                    plated = plated_str in ("true", "yes", "1")
+
+            if width > 0 or height > 0:
+                pad_defs[entry_id] = PadShape(
+                    shape_type=shape_type,
+                    width=width,
+                    height=height,
+                    drill_diameter=drill_diameter,
+                    plated=plated,
+                )
+
+    return pad_defs
+
+
+def _parse_packages(
+    root: ET.Element,
+    unit: str,
+    pad_defs: dict[str, PadShape],
+) -> dict[str, PackageDef]:
+    """Parse Package elements into PackageDef objects."""
+    packages: dict[str, PackageDef] = {}
+
+    for pkg_elem in _find_elements(root, "Package"):
+        name = pkg_elem.attrib.get("name", "")
+        if not name:
+            continue
+
+        pins: list[tuple[str, float, float]] = []
+        pad_shape: PadShape | None = None
+
+        for pin in _find_children(pkg_elem, "Pin"):
+            pin_name = pin.attrib.get("number", pin.attrib.get("name", ""))
+            px, py = 0.0, 0.0
+            loc = _find_child(pin, "Location")
+            if loc is not None:
+                try:
+                    px = _convert_to_mm(float(loc.attrib.get("x", "0")), unit)
+                    py = _convert_to_mm(float(loc.attrib.get("y", "0")), unit)
+                except ValueError:
+                    pass
+            pins.append((pin_name, px, py))
+
+            # Resolve pad shape from StandardPrimitiveRef
+            if pad_shape is None:
+                prim_ref = _find_child(pin, "StandardPrimitiveRef")
+                if prim_ref is not None:
+                    ref_id = prim_ref.attrib.get("id", "")
+                    if ref_id in pad_defs:
+                        pad_shape = pad_defs[ref_id]
+
+        # Parse body outline
+        body_w, body_h = 0.0, 0.0
+        outline = _find_child(pkg_elem, "Outline")
+        if outline is not None:
+            body_w, body_h = _bounding_box_from_polygon_elem(outline, unit)
+
+        # Parse courtyard
+        court_w, court_h = 0.0, 0.0
+        courtyard = _find_child(pkg_elem, "Courtyard")
+        if courtyard is not None:
+            court_w, court_h = _bounding_box_from_polygon_elem(courtyard, unit)
+
+        # Compute pin pitch (minimum non-zero distance between any two pins)
+        pin_pitch = 0.0
+        if len(pins) >= 2:
+            min_dist = float("inf")
+            for i in range(len(pins)):
+                for j in range(i + 1, len(pins)):
+                    d = math.hypot(pins[j][1] - pins[i][1],
+                                   pins[j][2] - pins[i][2])
+                    if d > 1e-6 and d < min_dist:
+                        min_dist = d
+            if min_dist < float("inf"):
+                pin_pitch = min_dist
+
+        packages[name] = PackageDef(
+            name=name,
+            pin_count=len(pins),
+            pins=pins,
+            pad_shape=pad_shape,
+            body_width=body_w,
+            body_height=body_h,
+            courtyard_width=court_w,
+            courtyard_height=court_h,
+            pin_pitch=pin_pitch,
+            source="parsed",
+        )
+
+    return packages
+
+
+def _bounding_box_from_polygon_elem(
+    elem: ET.Element, unit: str,
+) -> tuple[float, float]:
+    """Extract width/height from a polygon element's bounding box."""
+    pts_x: list[float] = []
+    pts_y: list[float] = []
+    for pt in elem.iter():
+        tag = _strip_namespace(pt.tag)
+        if tag in ("PolyBegin", "PolyStepSegment", "PolyStepCurve",
+                    "LineBegin", "LineEnd"):
+            x_s = pt.attrib.get("x", pt.attrib.get("X"))
+            y_s = pt.attrib.get("y", pt.attrib.get("Y"))
+            if x_s is not None and y_s is not None:
+                pts_x.append(_convert_to_mm(float(x_s), unit))
+                pts_y.append(_convert_to_mm(float(y_s), unit))
+    if pts_x:
+        return max(pts_x) - min(pts_x), max(pts_y) - min(pts_y)
+    return 0.0, 0.0
+
+
+# ---- Height / weight heuristics ----
+
+_FOOTPRINT_HEIGHT: dict[str, float] = {
+    "0201": 0.25, "0402": 0.35, "0603": 0.45, "0805": 0.55,
+    "1206": 0.65, "1210": 0.65,
+    "SOT23": 1.1, "SOT223": 1.5,
+    "QFP": 1.0, "TQFP": 1.0, "LQFP": 1.0,
+    "QFN": 0.8, "DFN": 0.8,
+    "BGA": 1.2, "CSP": 0.8,
+    "SOP": 1.5, "SOIC": 1.5, "SSOP": 1.3, "TSSOP": 1.1,
+    "DIP": 3.5,
+}
+
+_PREFIX_HEIGHT: dict[str, float] = {
+    "U": 1.5, "R": 1.0, "C": 1.0, "L": 1.0,
+    "J": 2.5, "D": 0.8, "Q": 1.0, "SW": 2.0,
+}
+
+_CERAMIC_PREFIXES = {"C", "Y", "X"}
+
+
+def _estimate_height(footprint: str, refdes: str) -> float:
+    """Estimate component height from footprint name or refdes prefix."""
+    upper = footprint.upper()
+    for key, h in _FOOTPRINT_HEIGHT.items():
+        if key in upper:
+            return h
+    # Fall back to refdes prefix
+    prefix = ""
+    for ch in refdes:
+        if ch.isalpha():
+            prefix += ch
+        else:
+            break
+    return _PREFIX_HEIGHT.get(prefix, 0.5)
+
+
+def _estimate_weight(body_w: float, body_h: float, height: float,
+                     refdes: str) -> float:
+    """Estimate component weight from body volume and material density."""
+    if body_w <= 0 or body_h <= 0 or height <= 0:
+        return 0.0
+    volume_cm3 = (body_w * body_h * height) / 1000.0  # mm³ → cm³
+    prefix = ""
+    for ch in refdes:
+        if ch.isalpha():
+            prefix += ch
+        else:
+            break
+    density = 3.0 if prefix in _CERAMIC_PREFIXES else 1.85  # g/cm³
+    return volume_cm3 * density
+
+
+def _compute_fallback_mechanical(design: PCBDesign) -> None:
+    """Synthesize PackageDef for components without one."""
+    for comp in design.components:
+        if comp.package_def is not None:
+            # Fill in missing height/weight on parsed packages
+            pkg = comp.package_def
+            if pkg.height <= 0:
+                pkg.height = _estimate_height(comp.footprint, comp.reference)
+            if pkg.weight_grams <= 0:
+                pkg.weight_grams = _estimate_weight(
+                    pkg.body_width, pkg.body_height, pkg.height, comp.reference)
+            continue
+
+        # Synthesize from pad extents
+        body_w, body_h = 0.0, 0.0
+        if comp.pads:
+            xs = [p.x for p in comp.pads]
+            ys = [p.y for p in comp.pads]
+            body_w = (max(xs) - min(xs)) + 0.6  # +0.3mm margin each side
+            body_h = (max(ys) - min(ys)) + 0.6
+
+        height = _estimate_height(comp.footprint, comp.reference)
+        weight = _estimate_weight(body_w, body_h, height, comp.reference)
+
+        comp.package_def = PackageDef(
+            name=comp.footprint or comp.reference,
+            pin_count=len(comp.pads),
+            body_width=body_w,
+            body_height=body_h,
+            height=height,
+            weight_grams=weight,
+            source="computed",
+        )

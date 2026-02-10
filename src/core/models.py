@@ -40,6 +40,31 @@ class Pad:
 
 
 @dataclass
+class PadShape:
+    shape_type: str  # circle, rect, oval, polygon
+    width: float  # mm
+    height: float  # mm
+    drill_diameter: float = 0.0  # 0 = SMD
+    plated: bool = True
+
+
+@dataclass
+class PackageDef:
+    name: str
+    pin_count: int = 0
+    pins: list[tuple[str, float, float]] = field(default_factory=list)  # (name, x, y)
+    pad_shape: PadShape | None = None
+    body_width: float = 0.0  # mm
+    body_height: float = 0.0  # mm
+    courtyard_width: float = 0.0  # mm
+    courtyard_height: float = 0.0  # mm
+    height: float = 0.0  # mm above board
+    pin_pitch: float = 0.0  # mm
+    weight_grams: float = 0.0
+    source: str = "parsed"  # parsed / computed / heuristic
+
+
+@dataclass
 class Component:
     reference: str
     component_type: ComponentType
@@ -49,6 +74,7 @@ class Component:
     properties: dict[str, Any] = field(default_factory=dict)
     rotation: float = 0.0
     layer: str = "Top"
+    package_def: PackageDef | None = None
 
     @property
     def spice_prefix(self) -> str:
@@ -114,6 +140,13 @@ class PCBDesign:
     nets: list[Net] = field(default_factory=list)
     traces: list[Trace] = field(default_factory=list)
     outline: list[tuple[float, float]] = field(default_factory=list)
+    packages: dict[str, PackageDef] = field(default_factory=dict)
+
+    def link_packages(self) -> None:
+        """Cross-reference component footprints to package definitions."""
+        for comp in self.components:
+            if comp.footprint and comp.footprint in self.packages:
+                comp.package_def = self.packages[comp.footprint]
 
     def get_component(self, reference: str) -> Component | None:
         for comp in self.components:

@@ -14,6 +14,15 @@
     </Stackup>
   </Content>
 
+  <DictionaryStandard units="MM">
+    <EntryStandard id="PAD_0402">
+      <RectCenter width="0.6" height="0.5"/>
+    </EntryStandard>
+    <EntryStandard id="PAD_QFP48">
+      <RectCenter width="0.3" height="1.6"/>
+    </EntryStandard>
+  </DictionaryStandard>
+
   <Ecad name="TestBoard">
     <CadData>
       <Step name="Board">
@@ -28,6 +37,95 @@
             </Polygon>
           </Outline>
         </Profile>
+
+        <Package name="0402">
+          <Outline>
+            <Polygon>
+              <PolyBegin x="-0.5" y="-0.3"/>
+              <PolyStepSegment x="0.5" y="-0.3"/>
+              <PolyStepSegment x="0.5" y="0.3"/>
+              <PolyStepSegment x="-0.5" y="0.3"/>
+              <PolyStepSegment x="-0.5" y="-0.3"/>
+            </Polygon>
+          </Outline>
+          <Courtyard>
+            <Polygon>
+              <PolyBegin x="-0.7" y="-0.5"/>
+              <PolyStepSegment x="0.7" y="-0.5"/>
+              <PolyStepSegment x="0.7" y="0.5"/>
+              <PolyStepSegment x="-0.7" y="0.5"/>
+              <PolyStepSegment x="-0.7" y="-0.5"/>
+            </Polygon>
+          </Courtyard>
+          <Pin number="1">
+            <Location x="-0.35" y="0"/>
+            <StandardPrimitiveRef id="PAD_0402"/>
+          </Pin>
+          <Pin number="2">
+            <Location x="0.35" y="0"/>
+            <StandardPrimitiveRef id="PAD_0402"/>
+          </Pin>
+        </Package>
+
+        <Package name="QFP-48">
+          <Outline>
+            <Polygon>
+              <PolyBegin x="-3.5" y="-3.5"/>
+              <PolyStepSegment x="3.5" y="-3.5"/>
+              <PolyStepSegment x="3.5" y="3.5"/>
+              <PolyStepSegment x="-3.5" y="3.5"/>
+              <PolyStepSegment x="-3.5" y="-3.5"/>
+            </Polygon>
+          </Outline>
+          <Pin number="1">
+            <Location x="-4.0" y="-2.75"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="2">
+            <Location x="-4.0" y="-2.25"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="3">
+            <Location x="-4.0" y="-1.75"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="4">
+            <Location x="-4.0" y="-1.25"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="5">
+            <Location x="-4.0" y="-0.75"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="6">
+            <Location x="-4.0" y="-0.25"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="7">
+            <Location x="-4.0" y="0.25"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="8">
+            <Location x="-4.0" y="0.75"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="9">
+            <Location x="-4.0" y="1.25"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="10">
+            <Location x="-4.0" y="1.75"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="11">
+            <Location x="-4.0" y="2.25"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+          <Pin number="12">
+            <Location x="-4.0" y="2.75"/>
+            <StandardPrimitiveRef id="PAD_QFP48"/>
+          </Pin>
+        </Package>
 
         <Component refDes="R1" value="10k" packageRef="0402">
           <Location x="10" y="15"/>

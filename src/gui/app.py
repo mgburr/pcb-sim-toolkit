@@ -34,6 +34,7 @@ from src.core.simulator import PCBSimulator
 from src.core.models import PCBDesign
 from src.analysis.magnetics import MagneticsAnalyzer
 from src.gui.board_view import plot_board_2d, plot_board_3d
+from src.gui.mechanical_view import plot_mechanical_summary, compute_board_summary
 from src.resource_path import get_examples_dir
 
 
@@ -278,7 +279,12 @@ class PCBSimulatorGUI:
         self.plot_notebook.add(self.board3d_frame, text="3D View")
         self._create_plot_canvas(self.board3d_frame, "board3d")
 
-        # Tab 3: Thermal
+        # Tab 3: Mechanical
+        self.mech_frame = ttk.Frame(self.plot_notebook)
+        self.plot_notebook.add(self.mech_frame, text="Mechanical")
+        self._create_mechanical_tab()
+
+        # Tab 4: Thermal
         self.thermal_frame = ttk.Frame(self.plot_notebook)
         self.plot_notebook.add(self.thermal_frame, text="Thermal")
         self._create_plot_canvas(self.thermal_frame, "thermal")
@@ -415,6 +421,7 @@ class PCBSimulatorGUI:
             self._update_design_display()
             self._plot_board_overview()
             self._plot_board_3d()
+            self._plot_mechanical()
             self._set_status(f"Loaded: {path.name}")
             self._log(f"Design loaded: {self.design.name}")
             self._log(f"  Size: {self.design.width} x {self.design.height} mm")
@@ -640,6 +647,7 @@ class PCBSimulatorGUI:
         """Update all plot tabs with simulation results."""
         self._plot_board_overview()
         self._plot_board_3d()
+        self._plot_mechanical()
 
         for r in self.results:
             if r.sim_type == SimulationType.THERMAL:
@@ -773,6 +781,77 @@ class PCBSimulatorGUI:
 
         fig.tight_layout()
         self.magnetics_canvas.draw()
+
+    # ---- Mechanical tab ----
+
+    def _create_mechanical_tab(self):
+        """Create the Mechanical tab with summary plot and component table."""
+        # Top half: matplotlib summary plot
+        self.mech_plot_frame = ttk.Frame(self.mech_frame)
+        self.mech_plot_frame.pack(fill=tk.BOTH, expand=True)
+        self._create_plot_canvas(self.mech_plot_frame, "mechanical")
+
+        # Bottom half: component treeview table
+        self.mech_table_frame = ttk.LabelFrame(
+            self.mech_frame, text="Component Mechanical Data", padding=5)
+        self.mech_table_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        columns = ("refdes", "package", "body", "pins", "pitch", "pad_type", "height")
+        self.mech_tree = ttk.Treeview(
+            self.mech_table_frame,
+            columns=columns,
+            show="headings",
+            height=8,
+        )
+        self.mech_tree.heading("refdes", text="RefDes")
+        self.mech_tree.heading("package", text="Package")
+        self.mech_tree.heading("body", text="Body (mm)")
+        self.mech_tree.heading("pins", text="Pins")
+        self.mech_tree.heading("pitch", text="Pitch")
+        self.mech_tree.heading("pad_type", text="Pad Type")
+        self.mech_tree.heading("height", text="Height")
+
+        self.mech_tree.column("refdes", width=60)
+        self.mech_tree.column("package", width=80)
+        self.mech_tree.column("body", width=80)
+        self.mech_tree.column("pins", width=40)
+        self.mech_tree.column("pitch", width=50)
+        self.mech_tree.column("pad_type", width=60)
+        self.mech_tree.column("height", width=50)
+
+        mech_scroll = ttk.Scrollbar(
+            self.mech_table_frame, orient=tk.VERTICAL,
+            command=self.mech_tree.yview)
+        self.mech_tree.configure(yscrollcommand=mech_scroll.set)
+        self.mech_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        mech_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def _plot_mechanical(self):
+        """Update the Mechanical tab with current design data."""
+        if not self.design:
+            return
+
+        plot_mechanical_summary(self.mechanical_fig, self.design)
+        self.mechanical_canvas.draw()
+
+        # Update treeview table
+        for item in self.mech_tree.get_children():
+            self.mech_tree.delete(item)
+
+        summary = compute_board_summary(self.design)
+        for comp in summary["components"]:
+            self.mech_tree.insert(
+                "", tk.END,
+                values=(
+                    comp["refdes"],
+                    comp["package"],
+                    comp["body"],
+                    comp["pins"],
+                    comp["pitch"],
+                    comp["pad_type"],
+                    comp["height"],
+                ),
+            )
 
     # ---- Utilities ----
 
