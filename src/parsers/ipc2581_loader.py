@@ -192,8 +192,7 @@ def _parse_board_outline(root: ET.Element, design: PCBDesign, unit: str) -> None
     if profile is None:
         return
 
-    xs: list[float] = []
-    ys: list[float] = []
+    points: list[tuple[float, float]] = []
 
     for elem in profile.iter():
         tag = _strip_namespace(elem.tag)
@@ -202,12 +201,17 @@ def _parse_board_outline(root: ET.Element, design: PCBDesign, unit: str) -> None
             x_str = elem.attrib.get("x") or elem.attrib.get("X")
             y_str = elem.attrib.get("y") or elem.attrib.get("Y")
             if x_str is not None and y_str is not None:
-                xs.append(_convert_to_mm(float(x_str), unit))
-                ys.append(_convert_to_mm(float(y_str), unit))
+                points.append((
+                    _convert_to_mm(float(x_str), unit),
+                    _convert_to_mm(float(y_str), unit),
+                ))
 
-    if xs and ys:
+    if points:
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
         design.width = max(xs) - min(xs)
         design.height = max(ys) - min(ys)
+        design.outline = points
 
 
 def _parse_stackup(
@@ -334,17 +338,25 @@ def _parse_components(root: ET.Element, unit: str) -> list[Component]:
         footprint = elem.attrib.get("packageRef", elem.attrib.get("standardPackageRef", ""))
         comp_type = _infer_component_type(refdes)
 
-        # Determine component position
+        # Determine component position, rotation, and layer
         comp_x, comp_y = 0.0, 0.0
+        rotation = 0.0
+        comp_layer = "Top"
 
         # Try Xform with x/y (Rev C style)
         xform = _find_child(elem, "Xform")
-        if xform is not None and "x" in xform.attrib:
-            try:
-                comp_x = _convert_to_mm(float(xform.attrib.get("x", "0")), unit)
-                comp_y = _convert_to_mm(float(xform.attrib.get("y", "0")), unit)
-            except ValueError:
-                pass
+        if xform is not None:
+            if "x" in xform.attrib:
+                try:
+                    comp_x = _convert_to_mm(float(xform.attrib.get("x", "0")), unit)
+                    comp_y = _convert_to_mm(float(xform.attrib.get("y", "0")), unit)
+                except ValueError:
+                    pass
+            if "rotation" in xform.attrib:
+                try:
+                    rotation = float(xform.attrib["rotation"])
+                except ValueError:
+                    pass
 
         # Try separate Location child (Rev B style, or fallback)
         loc = _find_child(elem, "Location")
@@ -354,6 +366,15 @@ def _parse_components(root: ET.Element, unit: str) -> list[Component]:
                 comp_y = _convert_to_mm(float(loc.attrib.get("y", "0")), unit)
             except ValueError:
                 pass
+
+        # Extract layer from layerRef or side attribute
+        layer_ref = elem.attrib.get("layerRef", elem.attrib.get("side", ""))
+        if layer_ref:
+            upper = layer_ref.upper()
+            if "BOT" in upper or "BACK" in upper:
+                comp_layer = "Bottom"
+            else:
+                comp_layer = "Top"
 
         # Parse pads from Pin children of the Component
         # Note: Rev B components don't have inline Pin children — pads come
@@ -380,6 +401,8 @@ def _parse_components(root: ET.Element, unit: str) -> list[Component]:
                 value=value,
                 footprint=footprint,
                 pads=pads,
+                rotation=rotation,
+                layer=comp_layer,
             )
         )
 

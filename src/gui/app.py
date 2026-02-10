@@ -19,7 +19,6 @@ import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
 import numpy as np
 
 # Local imports
@@ -34,6 +33,7 @@ from src.core.config import SimulationConfig, SimulationType
 from src.core.simulator import PCBSimulator
 from src.core.models import PCBDesign
 from src.analysis.magnetics import MagneticsAnalyzer
+from src.gui.board_view import plot_board_2d, plot_board_3d
 from src.resource_path import get_examples_dir
 
 
@@ -273,7 +273,12 @@ class PCBSimulatorGUI:
         self.plot_notebook.add(self.overview_frame, text="Board Overview")
         self._create_plot_canvas(self.overview_frame, "overview")
 
-        # Tab 2: Thermal
+        # Tab 2: 3D View
+        self.board3d_frame = ttk.Frame(self.plot_notebook)
+        self.plot_notebook.add(self.board3d_frame, text="3D View")
+        self._create_plot_canvas(self.board3d_frame, "board3d")
+
+        # Tab 3: Thermal
         self.thermal_frame = ttk.Frame(self.plot_notebook)
         self.plot_notebook.add(self.thermal_frame, text="Thermal")
         self._create_plot_canvas(self.thermal_frame, "thermal")
@@ -409,6 +414,7 @@ class PCBSimulatorGUI:
             self.design_path = path
             self._update_design_display()
             self._plot_board_overview()
+            self._plot_board_3d()
             self._set_status(f"Loaded: {path.name}")
             self._log(f"Design loaded: {self.design.name}")
             self._log(f"  Size: {self.design.width} x {self.design.height} mm")
@@ -633,6 +639,7 @@ class PCBSimulatorGUI:
     def _update_plots(self):
         """Update all plot tabs with simulation results."""
         self._plot_board_overview()
+        self._plot_board_3d()
 
         for r in self.results:
             if r.sim_type == SimulationType.THERMAL:
@@ -647,39 +654,16 @@ class PCBSimulatorGUI:
         if not self.design:
             return
 
-        fig = self.overview_fig
-        fig.clear()
-        ax = fig.add_subplot(111)
-
-        # Draw traces
-        colors = plt.cm.Set2(np.linspace(0, 1, max(len(self.design.traces), 1)))
-        for i, trace in enumerate(self.design.traces):
-            if len(trace.points) >= 2:
-                xs = [p[0] for p in trace.points]
-                ys = [p[1] for p in trace.points]
-                ax.plot(xs, ys, color=colors[i], linewidth=2, label=trace.net)
-
-        # Draw component locations
-        for comp in self.design.components:
-            if comp.pads:
-                cx = sum(p.x for p in comp.pads) / len(comp.pads)
-                cy = sum(p.y for p in comp.pads) / len(comp.pads)
-                ax.plot(cx, cy, "s", markersize=8, color="red")
-                ax.annotate(comp.reference, (cx, cy), fontsize=7, ha="center", va="bottom")
-
-        ax.set_xlim(0, self.design.width)
-        ax.set_ylim(0, self.design.height)
-        ax.set_aspect("equal")
-        ax.set_xlabel("X (mm)")
-        ax.set_ylabel("Y (mm)")
-        ax.set_title(f"Board Overview: {self.design.name}")
-        ax.grid(True, alpha=0.3)
-
-        if len(self.design.traces) <= 8:
-            ax.legend(loc="upper right", fontsize=7)
-
-        fig.tight_layout()
+        plot_board_2d(self.overview_fig, self.design)
         self.overview_canvas.draw()
+
+    def _plot_board_3d(self):
+        """Plot 3D board view."""
+        if not self.design:
+            return
+
+        plot_board_3d(self.board3d_fig, self.design)
+        self.board3d_canvas.draw()
 
     def _plot_thermal(self, data: dict):
         """Plot thermal heatmap."""

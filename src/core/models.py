@@ -47,6 +47,8 @@ class Component:
     footprint: str = ""
     pads: list[Pad] = field(default_factory=list)
     properties: dict[str, Any] = field(default_factory=dict)
+    rotation: float = 0.0
+    layer: str = "Top"
 
     @property
     def spice_prefix(self) -> str:
@@ -111,6 +113,7 @@ class PCBDesign:
     components: list[Component] = field(default_factory=list)
     nets: list[Net] = field(default_factory=list)
     traces: list[Trace] = field(default_factory=list)
+    outline: list[tuple[float, float]] = field(default_factory=list)
 
     def get_component(self, reference: str) -> Component | None:
         for comp in self.components:
