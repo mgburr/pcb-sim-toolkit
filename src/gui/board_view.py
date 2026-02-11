@@ -154,6 +154,16 @@ def plot_board_2d(
     )
     ax.add_patch(board_patch)
 
+    # --- Copper pours ---
+    for pour in getattr(design, "copper_pours", []):
+        color = net_colors.get(pour.net, "#b87333")
+        pour_patch = MplPolygon(
+            pour.outline, closed=True,
+            facecolor=color, edgecolor="none",
+            alpha=0.2, zorder=2,
+        )
+        ax.add_patch(pour_patch)
+
     # --- Traces with physical width ---
     for trace in design.traces:
         if len(trace.points) < 2:
@@ -170,12 +180,37 @@ def plot_board_2d(
         if highlight_component and comp.reference != highlight_component:
             pad_alpha = 0.3
         for pad in comp.pads:
-            pad_c = Circle(
-                (pad.x, pad.y), pad.diameter / 2.0,
-                facecolor="#cc8800", edgecolor="#ffcc00",
-                linewidth=0.5, zorder=4, alpha=pad_alpha,
-            )
-            ax.add_patch(pad_c)
+            p_shape = getattr(pad, "shape", "")
+            p_w = getattr(pad, "width", 0.0)
+            p_h = getattr(pad, "height", 0.0)
+            p_rot = getattr(pad, "rotation", 0.0)
+
+            if p_shape == "rect" and p_w > 0 and p_h > 0:
+                corners = _rotated_rect(
+                    pad.x, pad.y, p_w / 2.0, p_h / 2.0, p_rot)
+                patch = MplPolygon(
+                    corners, closed=True,
+                    facecolor="#cc8800", edgecolor="#ffcc00",
+                    linewidth=0.3, zorder=4, alpha=pad_alpha,
+                )
+                ax.add_patch(patch)
+            elif p_shape == "oval" and p_w > 0 and p_h > 0:
+                # Approximate oval as rectangle with rounded appearance
+                corners = _rotated_rect(
+                    pad.x, pad.y, p_w / 2.0, p_h / 2.0, p_rot)
+                patch = MplPolygon(
+                    corners, closed=True,
+                    facecolor="#cc8800", edgecolor="#ffcc00",
+                    linewidth=0.3, zorder=4, alpha=pad_alpha,
+                )
+                ax.add_patch(patch)
+            else:
+                pad_c = Circle(
+                    (pad.x, pad.y), pad.diameter / 2.0,
+                    facecolor="#cc8800", edgecolor="#ffcc00",
+                    linewidth=0.5, zorder=4, alpha=pad_alpha,
+                )
+                ax.add_patch(pad_c)
             if pad.drill > 0:
                 drill_c = Circle(
                     (pad.x, pad.y), pad.drill / 2.0,

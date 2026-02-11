@@ -37,6 +37,10 @@ class Pad:
     diameter: float = 1.0
     drill: float = 0.3
     layer: str = "F.Cu"
+    width: float = 0.0    # 0 = use diameter
+    height: float = 0.0   # 0 = use diameter
+    shape: str = ""        # "rect", "circle", "oval", "" = circle fallback
+    rotation: float = 0.0  # pad rotation in degrees
 
 
 @dataclass
@@ -49,11 +53,20 @@ class PadShape:
 
 
 @dataclass
+class CopperPour:
+    net: str
+    layer: str
+    outline: list[tuple[float, float]]  # boundary polygon
+    cutouts: list[list[tuple[float, float]]] = field(default_factory=list)
+
+
+@dataclass
 class PackageDef:
     name: str
     pin_count: int = 0
     pins: list[tuple[str, float, float]] = field(default_factory=list)  # (name, x, y)
     pad_shape: PadShape | None = None
+    pin_shapes: dict[str, PadShape] = field(default_factory=dict)  # pin_name -> PadShape
     body_width: float = 0.0  # mm
     body_height: float = 0.0  # mm
     courtyard_width: float = 0.0  # mm
@@ -141,6 +154,7 @@ class PCBDesign:
     traces: list[Trace] = field(default_factory=list)
     outline: list[tuple[float, float]] = field(default_factory=list)
     packages: dict[str, PackageDef] = field(default_factory=dict)
+    copper_pours: list[CopperPour] = field(default_factory=list)
 
     def link_packages(self) -> None:
         """Cross-reference component footprints to package definitions."""

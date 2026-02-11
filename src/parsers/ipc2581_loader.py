@@ -29,6 +29,7 @@ from ..core.models import (
     PCBDesign,
     Component,
     ComponentType,
+    CopperPour,
     Net,
     Trace,
     Pad,
@@ -73,8 +74,15 @@ def load_ipc2581(path: Path) -> PCBDesign:
     design.packages = _parse_packages(root, unit, pad_defs)
     design.link_packages()
     holes = _parse_holes(root, unit)
+    # Merge PadStack-based holes (LayerHole + PadStackInstance)
+    padstack_holes = _parse_padstack_holes(root, unit)
+    for k, v in padstack_holes.items():
+        holes.setdefault(k, v)
     _synthesize_pads_from_packages(design, holes)
     _compute_fallback_mechanical(design)
+
+    # Parse copper pours
+    design.copper_pours = _parse_copper_pours(root, unit)
 
     return design
 
@@ -622,6 +630,7 @@ def _parse_packages(
 
         pins: list[tuple[str, float, float]] = []
         pad_shape: PadShape | None = None
+        pin_shapes: dict[str, PadShape] = {}
 
         for pin in _find_children(pkg_elem, "Pin"):
             pin_name = pin.attrib.get("number", pin.attrib.get("name", ""))
@@ -635,13 +644,15 @@ def _parse_packages(
                     pass
             pins.append((pin_name, px, py))
 
-            # Resolve pad shape from StandardPrimitiveRef
-            if pad_shape is None:
-                prim_ref = _find_child(pin, "StandardPrimitiveRef")
-                if prim_ref is not None:
-                    ref_id = prim_ref.attrib.get("id", "")
-                    if ref_id in pad_defs:
-                        pad_shape = pad_defs[ref_id]
+            # Resolve pad shape from StandardPrimitiveRef for every pin
+            prim_ref = _find_child(pin, "StandardPrimitiveRef")
+            if prim_ref is not None:
+                ref_id = prim_ref.attrib.get("id", "")
+                if ref_id in pad_defs:
+                    pin_shapes[pin_name] = pad_defs[ref_id]
+            # Keep first-found as package-level fallback
+            if pad_shape is None and pin_name in pin_shapes:
+                pad_shape = pin_shapes[pin_name]
 
         # Parse body outline
         body_w, body_h = 0.0, 0.0
@@ -673,6 +684,7 @@ def _parse_packages(
             pin_count=len(pins),
             pins=pins,
             pad_shape=pad_shape,
+            pin_shapes=pin_shapes,
             body_width=body_w,
             body_height=body_h,
             courtyard_width=court_w,
@@ -749,14 +761,22 @@ def _synthesize_pads_from_packages(
         rad = math.radians(comp.rotation)
         cos_a, sin_a = math.cos(rad), math.sin(rad)
 
-        pad_dia = 1.0
-        if pkg.pad_shape is not None:
-            pad_dia = max(pkg.pad_shape.width, pkg.pad_shape.height, 0.5)
-
         for pin_name, px, py in pkg.pins:
             # Rotate relative pin position by component rotation
             abs_x = cx + px * cos_a - py * sin_a
             abs_y = cy + px * sin_a + py * cos_a
+
+            # Resolve per-pin shape, falling back to package-level shape
+            pin_shape = pkg.pin_shapes.get(pin_name)
+            if pin_shape:
+                pw, ph = pin_shape.width, pin_shape.height
+                shape_type = pin_shape.shape_type
+            elif pkg.pad_shape:
+                pw, ph = pkg.pad_shape.width, pkg.pad_shape.height
+                shape_type = pkg.pad_shape.shape_type
+            else:
+                pw, ph = 1.0, 1.0
+                shape_type = "circle"
 
             # Look up drill hole at this position
             key = (round(abs_x, 3), round(abs_y, 3))
@@ -764,8 +784,118 @@ def _synthesize_pads_from_packages(
 
             comp.pads.append(Pad(
                 name=pin_name, x=abs_x, y=abs_y,
-                diameter=pad_dia, drill=drill,
+                diameter=max(pw, ph, 0.5),
+                width=pw, height=ph,
+                shape=shape_type,
+                rotation=comp.rotation,
+                drill=drill,
             ))
+
+
+# ---- PadStack-based hole parsing ----
+
+def _parse_padstack_holes(
+    root: ET.Element, unit: str,
+) -> dict[tuple[float, float], float]:
+    """Parse drill diameters from PadStack/LayerHole + PadStackInstance positions.
+
+    IPC-2581 Rev B stores drill info in ``<LayerHole>`` inside ``<PadStack>``
+    definitions, with positions coming from ``<PadStackInstance>`` elements.
+    """
+    # Step 1: Build padstack_name -> drill_diameter from PadStack/LayerHole
+    padstack_drills: dict[str, float] = {}
+    for ps_elem in _find_elements(root, "PadStack"):
+        ps_name = ps_elem.attrib.get("name", ps_elem.attrib.get("id", ""))
+        if not ps_name:
+            continue
+        for lh in _find_elements(ps_elem, "LayerHole"):
+            try:
+                d = _convert_to_mm(
+                    float(lh.attrib.get("diameter", "0")), unit)
+            except ValueError:
+                continue
+            if d > 0:
+                padstack_drills[ps_name] = d
+                break  # one drill per padstack
+
+    # Step 2: Build position from PadStackInstance x,y + padStackDefRef
+    holes: dict[tuple[float, float], float] = {}
+    for psi in _find_elements(root, "PadStackInstance"):
+        ps_ref = psi.attrib.get("padstackDefRef",
+                                psi.attrib.get("padStackRef", ""))
+        if ps_ref not in padstack_drills:
+            continue
+        loc = _find_child(psi, "Location")
+        if loc is None:
+            continue
+        try:
+            x = round(_convert_to_mm(
+                float(loc.attrib.get("x", "0")), unit), 3)
+            y = round(_convert_to_mm(
+                float(loc.attrib.get("y", "0")), unit), 3)
+        except ValueError:
+            continue
+        holes[(x, y)] = padstack_drills[ps_ref]
+
+    return holes
+
+
+# ---- Copper pour parsing ----
+
+def _parse_polygon_points(
+    polygon_elem: ET.Element, unit: str,
+) -> list[tuple[float, float]]:
+    """Extract vertex list from a Polygon/Cutout element's PolyBegin/PolyStepSegment children."""
+    points: list[tuple[float, float]] = []
+    for pt in polygon_elem.iter():
+        tag = _strip_namespace(pt.tag)
+        if tag in ("PolyBegin", "PolyStepSegment", "PolyStepCurve"):
+            x_s = pt.attrib.get("x", pt.attrib.get("X"))
+            y_s = pt.attrib.get("y", pt.attrib.get("Y"))
+            if x_s is not None and y_s is not None:
+                try:
+                    points.append((
+                        _convert_to_mm(float(x_s), unit),
+                        _convert_to_mm(float(y_s), unit),
+                    ))
+                except ValueError:
+                    pass
+    return points
+
+
+def _parse_copper_pours(
+    root: ET.Element, unit: str,
+) -> list[CopperPour]:
+    """Parse ``<Contour>`` elements inside LayerFeature/Set as copper pours."""
+    pours: list[CopperPour] = []
+
+    for layer_feat in _find_elements(root, "LayerFeature"):
+        layer_name = layer_feat.attrib.get("layerRef", "")
+
+        for set_elem in _find_children(layer_feat, "Set"):
+            net_name = set_elem.attrib.get("net", "")
+
+            # Look for Contour elements (may be nested under Features)
+            for contour in _find_elements(set_elem, "Contour"):
+                polygon = _find_child(contour, "Polygon")
+                if polygon is None:
+                    continue
+                outline = _parse_polygon_points(polygon, unit)
+                if len(outline) < 3:
+                    continue
+
+                cutouts: list[list[tuple[float, float]]] = []
+                for cutout in _find_children(contour, "Cutout"):
+                    cut_pts = _parse_polygon_points(cutout, unit)
+                    if len(cut_pts) >= 3:
+                        cutouts.append(cut_pts)
+
+                pours.append(CopperPour(
+                    net=net_name, layer=layer_name,
+                    outline=outline, cutouts=cutouts,
+                ))
+
+    return pours
 
 
 # ---- Height / weight heuristics ----

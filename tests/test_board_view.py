@@ -14,6 +14,7 @@ from src.core.models import (
     PCBDesign,
     Component,
     ComponentType,
+    CopperPour,
     Net,
     Trace,
     Pad,
@@ -351,3 +352,95 @@ class TestModelBackwardCompat:
         """PCBDesign should work without outline arg."""
         design = PCBDesign(name="test", width=10, height=10)
         assert design.outline == []
+        assert design.copper_pours == []
+
+    def test_pad_new_fields_defaults(self):
+        """Pad new fields should default to backward-compatible values."""
+        pad = Pad(name="1", x=0, y=0)
+        assert pad.width == 0.0
+        assert pad.height == 0.0
+        assert pad.shape == ""
+        assert pad.rotation == 0.0
+
+    def test_pad_with_rect_shape(self):
+        """Pad can be created with rectangular shape info."""
+        pad = Pad(name="1", x=5, y=10, width=1.2, height=0.6,
+                  shape="rect", rotation=45.0)
+        assert pad.shape == "rect"
+        assert pad.width == 1.2
+        assert pad.height == 0.6
+        assert pad.rotation == 45.0
+
+
+# ---------------------------------------------------------------------------
+# Rectangular pad rendering tests
+# ---------------------------------------------------------------------------
+
+class TestRectangularPadRendering:
+    def test_renders_rect_pads(self, fig):
+        """Design with rectangular pads should render without error."""
+        design = PCBDesign(
+            name="rect_pads", width=20, height=15,
+            components=[
+                Component(
+                    reference="U1",
+                    component_type=ComponentType.IC,
+                    value="IC",
+                    pads=[
+                        Pad(name="1", x=5, y=5, width=1.2, height=0.6,
+                            shape="rect", diameter=1.2),
+                        Pad(name="2", x=7, y=5, width=1.2, height=0.6,
+                            shape="rect", diameter=1.2),
+                    ],
+                ),
+            ],
+        )
+        plot_board_2d(fig, design)
+        assert len(fig.axes) == 1
+
+    def test_renders_mixed_pad_shapes(self, fig):
+        """Design mixing circles and rectangles should render."""
+        design = PCBDesign(
+            name="mixed_pads", width=20, height=15,
+            components=[
+                Component(
+                    reference="U1",
+                    component_type=ComponentType.IC,
+                    value="IC",
+                    pads=[
+                        Pad(name="1", x=5, y=5, width=1.2, height=0.6,
+                            shape="rect", diameter=1.2),
+                        Pad(name="2", x=7, y=5, diameter=1.0),  # circle fallback
+                    ],
+                ),
+            ],
+        )
+        plot_board_2d(fig, design)
+        assert len(fig.axes) == 1
+
+
+# ---------------------------------------------------------------------------
+# Copper pour rendering tests
+# ---------------------------------------------------------------------------
+
+class TestCopperPourRendering:
+    def test_renders_copper_pours(self, fig):
+        """Design with copper pours should render without error."""
+        design = PCBDesign(
+            name="with_pours", width=50, height=40,
+            outline=[(0, 0), (50, 0), (50, 40), (0, 40), (0, 0)],
+            copper_pours=[
+                CopperPour(
+                    net="GND", layer="Top",
+                    outline=[(5, 5), (45, 5), (45, 35), (5, 35)],
+                ),
+            ],
+        )
+        plot_board_2d(fig, design)
+        assert len(fig.axes) == 1
+
+    def test_renders_empty_pours_list(self, fig):
+        """Design with empty copper_pours should render fine."""
+        design = PCBDesign(name="no_pours", width=20, height=15)
+        plot_board_2d(fig, design)
+        assert len(fig.axes) == 1
