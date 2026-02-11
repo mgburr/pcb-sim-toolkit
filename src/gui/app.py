@@ -72,6 +72,8 @@ class PCBSimulatorGUI:
             self.output_dir = Path("./sim_output")
         self.sim_thread: threading.Thread | None = None
         self.message_queue: queue.Queue = queue.Queue()
+        self._selected_component: str | None = None
+        self._syncing_selection: bool = False
 
         # Style configuration
         self._configure_styles()
@@ -205,6 +207,9 @@ class PCBSimulatorGUI:
         self.comp_tree.configure(yscrollcommand=comp_scroll.set)
         self.comp_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         comp_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.comp_tree.bind("<<TreeviewSelect>>", self._on_component_selected)
+        self.comp_tree.bind("<Button-1>", self._on_tree_click, add=True)
 
         # Simulation Configuration
         config_frame = ttk.LabelFrame(self.left_panel, text="Simulation Config", padding=10)
@@ -407,6 +412,7 @@ class PCBSimulatorGUI:
 
     def _load_design(self, path: Path):
         """Load a design from the given path."""
+        self._selected_component = None
         try:
             self._log(f"Loading design: {path}")
             if path.suffix == ".kicad_pcb":
@@ -662,7 +668,10 @@ class PCBSimulatorGUI:
         if not self.design:
             return
 
-        plot_board_2d(self.overview_fig, self.design)
+        plot_board_2d(
+            self.overview_fig, self.design,
+            highlight_component=self._selected_component,
+        )
         self.overview_canvas.draw()
 
     def _plot_board_3d(self):
@@ -670,7 +679,10 @@ class PCBSimulatorGUI:
         if not self.design:
             return
 
-        plot_board_3d(self.board3d_fig, self.design)
+        plot_board_3d(
+            self.board3d_fig, self.design,
+            highlight_component=self._selected_component,
+        )
         self.board3d_canvas.draw()
 
     def _plot_thermal(self, data: dict):
@@ -826,6 +838,9 @@ class PCBSimulatorGUI:
         self.mech_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         mech_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
+        self.mech_tree.bind("<<TreeviewSelect>>", self._on_component_selected)
+        self.mech_tree.bind("<Button-1>", self._on_tree_click, add=True)
+
     def _plot_mechanical(self):
         """Update the Mechanical tab with current design data."""
         if not self.design:
@@ -852,6 +867,53 @@ class PCBSimulatorGUI:
                     comp["height"],
                 ),
             )
+
+    # ---- Component selection ----
+
+    def _on_component_selected(self, event):
+        """Handle component selection in either treeview."""
+        if self._syncing_selection:
+            return
+        tree = event.widget
+        selection = tree.selection()
+        if not selection:
+            return
+        values = tree.item(selection[0], "values")
+        if not values:
+            return
+        refdes = values[0]
+
+        self._selected_component = refdes
+        self._syncing_selection = True
+        try:
+            other = (
+                self.mech_tree if tree is self.comp_tree else self.comp_tree
+            )
+            other.selection_remove(*other.selection())
+            for iid in other.get_children():
+                if other.item(iid, "values")[0] == refdes:
+                    other.selection_set(iid)
+                    other.see(iid)
+                    break
+        finally:
+            self._syncing_selection = False
+
+        self._plot_board_overview()
+        self._plot_board_3d()
+
+    def _on_tree_click(self, event):
+        """Clear selection when clicking empty space in a treeview."""
+        tree = event.widget
+        if tree.identify_region(event.x, event.y) == "nothing":
+            self._syncing_selection = True
+            try:
+                self.comp_tree.selection_remove(*self.comp_tree.selection())
+                self.mech_tree.selection_remove(*self.mech_tree.selection())
+            finally:
+                self._syncing_selection = False
+            self._selected_component = None
+            self._plot_board_overview()
+            self._plot_board_3d()
 
     # ---- Utilities ----
 

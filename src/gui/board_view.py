@@ -124,6 +124,7 @@ def plot_board_2d(
     fig: Figure,
     design: PCBDesign,
     highlight_net: str | None = None,
+    highlight_component: str | None = None,
 ) -> None:
     """Render an enhanced 2D top-down board view.
 
@@ -135,6 +136,8 @@ def plot_board_2d(
         The board design to render.
     highlight_net : str or None
         If given, dim all nets except this one.
+    highlight_component : str or None
+        If given, highlight this component and dim all others.
     """
     fig.clear()
     ax = fig.add_subplot(111)
@@ -163,12 +166,14 @@ def plot_board_2d(
 
     # --- Pads ---
     for comp in design.components:
+        pad_alpha = 1.0
+        if highlight_component and comp.reference != highlight_component:
+            pad_alpha = 0.3
         for pad in comp.pads:
-            alpha = 1.0
             pad_c = Circle(
                 (pad.x, pad.y), pad.diameter / 2.0,
                 facecolor="#cc8800", edgecolor="#ffcc00",
-                linewidth=0.5, zorder=4, alpha=alpha,
+                linewidth=0.5, zorder=4, alpha=pad_alpha,
             )
             ax.add_patch(pad_c)
             if pad.drill > 0:
@@ -182,16 +187,38 @@ def plot_board_2d(
     for comp in design.components:
         cx, cy, hw, hh = _component_extent(comp)
         corners = _rotated_rect(cx, cy, hw, hh, comp.rotation)
+        if highlight_component and comp.reference == highlight_component:
+            edge_color = "#00ff00"
+            line_width = 2.5
+            line_style = "-"
+            comp_alpha = 1.0
+            text_color = "#00ff00"
+            text_size = 7
+        elif highlight_component:
+            edge_color = "#dddddd"
+            line_width = 0.8
+            line_style = "--"
+            comp_alpha = 0.3
+            text_color = "white"
+            text_size = 6
+        else:
+            edge_color = "#dddddd"
+            line_width = 0.8
+            line_style = "--"
+            comp_alpha = 1.0
+            text_color = "white"
+            text_size = 6
         comp_patch = MplPolygon(
             corners, closed=True,
-            facecolor="none", edgecolor="#dddddd",
-            linewidth=0.8, linestyle="--", zorder=6,
+            facecolor="none", edgecolor=edge_color,
+            linewidth=line_width, linestyle=line_style,
+            zorder=6, alpha=comp_alpha,
         )
         ax.add_patch(comp_patch)
         ax.text(
             cx, cy, comp.reference,
-            fontsize=6, color="white", ha="center", va="center",
-            zorder=7, fontweight="bold",
+            fontsize=text_size, color=text_color, ha="center", va="center",
+            zorder=7, fontweight="bold", alpha=comp_alpha,
         )
 
     # --- Axes styling ---
@@ -394,7 +421,11 @@ def _find_trace_z(
     return 0.01
 
 
-def plot_board_3d(fig: Figure, design: PCBDesign) -> None:
+def plot_board_3d(
+    fig: Figure,
+    design: PCBDesign,
+    highlight_component: str | None = None,
+) -> None:
     """Render a 3D perspective view of the PCB.
 
     Board top surface at z=0, extruded down to z=-thickness.
@@ -406,6 +437,8 @@ def plot_board_3d(fig: Figure, design: PCBDesign) -> None:
         matplotlib figure (will be cleared).
     design : PCBDesign
         The board design to render.
+    highlight_component : str or None
+        If given, highlight this component and dim all others.
     """
     fig.clear()
     ax = fig.add_subplot(111, projection="3d")
@@ -481,9 +514,28 @@ def plot_board_3d(fig: Figure, design: PCBDesign) -> None:
         )
         faces = _rotate_faces(faces, cx, cy, comp.rotation)
 
+        if highlight_component and comp.reference == highlight_component:
+            edge_col = "#00ff00"
+            edge_lw = 1.2
+            comp_alpha = 0.95
+            text_color = "#00ff00"
+            text_size = 6
+        elif highlight_component:
+            edge_col = "#222222"
+            edge_lw = 0.4
+            comp_alpha = 0.25
+            text_color = "white"
+            text_size = 5
+        else:
+            edge_col = "#222222"
+            edge_lw = 0.4
+            comp_alpha = 0.85
+            text_color = "white"
+            text_size = 5
+
         comp_coll = Poly3DCollection(
-            faces, facecolors=comp_color, edgecolors="#222222",
-            linewidths=0.4, alpha=0.85,
+            faces, facecolors=comp_color, edgecolors=edge_col,
+            linewidths=edge_lw, alpha=comp_alpha,
         )
         ax.add_collection3d(comp_coll)
 
@@ -492,7 +544,8 @@ def plot_board_3d(fig: Figure, design: PCBDesign) -> None:
         ax.text(
             cx, cy, label_z + 0.1,
             comp.reference,
-            fontsize=5, color="white", ha="center", va="bottom", zorder=20,
+            fontsize=text_size, color=text_color,
+            ha="center", va="bottom", zorder=20,
         )
 
     # --- Axes styling ---
