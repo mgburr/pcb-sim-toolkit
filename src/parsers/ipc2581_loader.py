@@ -72,6 +72,8 @@ def load_ipc2581(path: Path) -> PCBDesign:
     pad_defs = _parse_pad_definitions(root, unit)
     design.packages = _parse_packages(root, unit, pad_defs)
     design.link_packages()
+    holes = _parse_holes(root, unit)
+    _synthesize_pads_from_packages(design, holes)
     _compute_fallback_mechanical(design)
 
     return design
@@ -413,6 +415,7 @@ def _parse_components(root: ET.Element, unit: str) -> list[Component]:
                 pads=pads,
                 rotation=rotation,
                 layer=comp_layer,
+                properties={"_x": comp_x, "_y": comp_y},
             )
         )
 
@@ -699,6 +702,70 @@ def _bounding_box_from_polygon_elem(
     if pts_x:
         return max(pts_x) - min(pts_x), max(pts_y) - min(pts_y)
     return 0.0, 0.0
+
+
+# ---- Hole parsing and pad synthesis from Package definitions (Rev B) ----
+
+def _parse_holes(root: ET.Element, unit: str) -> dict[tuple[float, float], float]:
+    """Parse ``<Hole>`` elements into a position → drill diameter lookup.
+
+    Rounds coordinates to 3 decimal places for fuzzy matching.
+    """
+    holes: dict[tuple[float, float], float] = {}
+    for elem in _find_elements(root, "Hole"):
+        try:
+            x = round(_convert_to_mm(float(elem.attrib.get("x", "0")), unit), 3)
+            y = round(_convert_to_mm(float(elem.attrib.get("y", "0")), unit), 3)
+            d = _convert_to_mm(float(elem.attrib.get("diameter", "0")), unit)
+        except ValueError:
+            continue
+        if d > 0:
+            holes[(x, y)] = d
+    return holes
+
+
+def _synthesize_pads_from_packages(
+    design: PCBDesign,
+    holes: dict[tuple[float, float], float],
+) -> None:
+    """Create Pad objects for components that have no inline pads.
+
+    Rev B IPC-2581 files define pin positions in ``<Package>`` elements
+    rather than inline in ``<Component>``.  After ``link_packages()`` has
+    cross-referenced packages, this function converts package-relative pin
+    positions to absolute board coordinates using each component's stored
+    position and rotation.  Drill diameters are looked up from the parsed
+    ``<Hole>`` elements; pads with no matching hole are treated as SMD.
+    """
+    for comp in design.components:
+        if comp.pads:
+            continue
+        pkg = comp.package_def
+        if pkg is None or not pkg.pins:
+            continue
+
+        cx = comp.properties.get("_x", 0.0)
+        cy = comp.properties.get("_y", 0.0)
+        rad = math.radians(comp.rotation)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+
+        pad_dia = 1.0
+        if pkg.pad_shape is not None:
+            pad_dia = max(pkg.pad_shape.width, pkg.pad_shape.height, 0.5)
+
+        for pin_name, px, py in pkg.pins:
+            # Rotate relative pin position by component rotation
+            abs_x = cx + px * cos_a - py * sin_a
+            abs_y = cy + px * sin_a + py * cos_a
+
+            # Look up drill hole at this position
+            key = (round(abs_x, 3), round(abs_y, 3))
+            drill = holes.get(key, 0.0)
+
+            comp.pads.append(Pad(
+                name=pin_name, x=abs_x, y=abs_y,
+                diameter=pad_dia, drill=drill,
+            ))
 
 
 # ---- Height / weight heuristics ----
