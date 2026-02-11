@@ -863,14 +863,42 @@ def _parse_polygon_points(
     return points
 
 
+def _is_copper_layer_name(name: str) -> bool:
+    """Return True if the layer name looks like a copper/signal layer."""
+    upper = name.upper()
+    # Exclude non-copper layers by keyword
+    for kw in ("PASTE", "SOLDER", "MASK", "SILK", "OVERLAY", "LEGEND",
+               "ASSEMBLY", "DOCUMENT", "DRILL", "MECHANICAL", "MECH",
+               "ROUT", "ROUTE", "OUTLINE", "FAB", "COURTYARD"):
+        if kw in upper:
+            return False
+    # Accept common copper layer patterns
+    if any(kw in upper for kw in ("LAYER", "CU", "COPPER", "SIGNAL",
+                                   "POWER", "GROUND", "PLANE", "TOP",
+                                   "BOTTOM", "BOT", "INNER", "MID")):
+        return True
+    # Accept L<n> patterns (e.g. "L2-CU", "L3")
+    stripped = name.strip()
+    if stripped and stripped[0].upper() == "L" and len(stripped) > 1 and stripped[1].isdigit():
+        return True
+    return False
+
+
 def _parse_copper_pours(
     root: ET.Element, unit: str,
 ) -> list[CopperPour]:
-    """Parse ``<Contour>`` elements inside LayerFeature/Set as copper pours."""
+    """Parse ``<Contour>`` elements inside LayerFeature/Set as copper pours.
+
+    Only includes contours on copper layers, filtering out paste, solder mask,
+    silkscreen, mechanical, and other non-copper layers.
+    """
     pours: list[CopperPour] = []
 
     for layer_feat in _find_elements(root, "LayerFeature"):
         layer_name = layer_feat.attrib.get("layerRef", "")
+
+        if not _is_copper_layer_name(layer_name):
+            continue
 
         for set_elem in _find_children(layer_feat, "Set"):
             net_name = set_elem.attrib.get("net", "")
