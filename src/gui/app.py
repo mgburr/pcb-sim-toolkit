@@ -897,6 +897,9 @@ class PCBSimulatorGUI:
             return
         refdes = values[0]
 
+        if refdes == self._selected_component:
+            return
+
         self._selected_component = refdes
         self._syncing_selection = True
         try:
