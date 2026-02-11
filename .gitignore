@@ -24,8 +24,10 @@ diff_pair_output/
 led_output/
 sim_output/
 
-# Generated assets
-assets/
+# Generated assets (keep icons)
+assets/*
+!assets/pcb-sim-toolkit.ico
+!assets/icon_256.png
 
 # PyInstaller
 *.spec.bak
