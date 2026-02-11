@@ -74,6 +74,7 @@ class PCBSimulatorGUI:
         self.message_queue: queue.Queue = queue.Queue()
         self._selected_component: str | None = None
         self._syncing_selection: bool = False
+        self._loading: bool = False
 
         # Style configuration
         self._configure_styles()
@@ -413,8 +414,12 @@ class PCBSimulatorGUI:
     def _load_design(self, path: Path):
         """Load a design from the given path."""
         self._selected_component = None
+        self._loading = True
         try:
             self._log(f"Loading design: {path}")
+            self._set_status(f"Loading: {path.name}...")
+            self.root.update_idletasks()
+
             if path.suffix == ".kicad_pcb":
                 self.design = load_kicad_pcb(path)
             elif path.suffix == ".cvg":
@@ -425,9 +430,16 @@ class PCBSimulatorGUI:
                 self.design = load_design(path)
             self.design_path = path
             self._update_design_display()
+            self.root.update_idletasks()
+
             self._plot_board_overview()
+            self.root.update_idletasks()
+
             self._plot_board_3d()
+            self.root.update_idletasks()
+
             self._plot_mechanical()
+
             self._set_status(f"Loaded: {path.name}")
             self._log(f"Design loaded: {self.design.name}")
             self._log(f"  Size: {self.design.width} x {self.design.height} mm")
@@ -437,6 +449,8 @@ class PCBSimulatorGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load design:\n{e}")
             self._log(f"ERROR: {e}")
+        finally:
+            self._loading = False
 
     def _reload_design(self):
         """Reload the current design."""
@@ -672,7 +686,7 @@ class PCBSimulatorGUI:
             self.overview_fig, self.design,
             highlight_component=self._selected_component,
         )
-        self.overview_canvas.draw()
+        self.overview_canvas.draw_idle()
 
     def _plot_board_3d(self):
         """Plot 3D board view."""
@@ -683,7 +697,7 @@ class PCBSimulatorGUI:
             self.board3d_fig, self.design,
             highlight_component=self._selected_component,
         )
-        self.board3d_canvas.draw()
+        self.board3d_canvas.draw_idle()
 
     def _plot_thermal(self, data: dict):
         """Plot thermal heatmap."""
@@ -704,7 +718,7 @@ class PCBSimulatorGUI:
         ax.set_ylabel("Y (cells)")
 
         fig.tight_layout()
-        self.thermal_canvas.draw()
+        self.thermal_canvas.draw_idle()
         self.plot_notebook.select(self.thermal_frame)
 
     def _plot_signal_integrity(self, data: dict):
@@ -731,7 +745,7 @@ class PCBSimulatorGUI:
             ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height() / 2, f"{z:.1f}", va="center", fontsize=8)
 
         fig.tight_layout()
-        self.si_canvas.draw()
+        self.si_canvas.draw_idle()
 
     def _plot_transient(self, data: dict):
         """Plot transient waveforms."""
@@ -755,7 +769,7 @@ class PCBSimulatorGUI:
         ax.grid(True, alpha=0.3)
 
         fig.tight_layout()
-        self.transient_canvas.draw()
+        self.transient_canvas.draw_idle()
 
     def _plot_magnetics(self):
         """Plot magnetics results."""
@@ -792,7 +806,7 @@ class PCBSimulatorGUI:
         ax.set_aspect("equal")
 
         fig.tight_layout()
-        self.magnetics_canvas.draw()
+        self.magnetics_canvas.draw_idle()
 
     # ---- Mechanical tab ----
 
@@ -847,7 +861,7 @@ class PCBSimulatorGUI:
             return
 
         plot_mechanical_summary(self.mechanical_fig, self.design)
-        self.mechanical_canvas.draw()
+        self.mechanical_canvas.draw_idle()
 
         # Update treeview table
         for item in self.mech_tree.get_children():
@@ -872,7 +886,7 @@ class PCBSimulatorGUI:
 
     def _on_component_selected(self, event):
         """Handle component selection in either treeview."""
-        if self._syncing_selection:
+        if self._syncing_selection or self._loading:
             return
         tree = event.widget
         selection = tree.selection()
