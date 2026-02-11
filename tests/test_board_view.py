@@ -189,6 +189,100 @@ class TestPlotBoard3D:
 
 
 # ---------------------------------------------------------------------------
+# Component highlighting tests
+# ---------------------------------------------------------------------------
+
+class TestHighlightComponent2D:
+    def test_renders_without_error(self, fig, full_design):
+        """Highlighting a component in 2D should not raise."""
+        plot_board_2d(fig, full_design, highlight_component="R1")
+        assert len(fig.axes) == 1
+
+    def test_nonexistent_component(self, fig, full_design):
+        """Highlighting a component that doesn't exist should not raise."""
+        plot_board_2d(fig, full_design, highlight_component="MISSING")
+        assert len(fig.axes) == 1
+
+    def test_combined_with_highlight_net(self, fig, full_design):
+        """Both highlight_net and highlight_component at once should not raise."""
+        plot_board_2d(fig, full_design, highlight_net="VCC", highlight_component="U1")
+        assert len(fig.axes) == 1
+
+    def test_highlighted_text_is_green(self, fig, full_design):
+        """The highlighted component label should be green."""
+        plot_board_2d(fig, full_design, highlight_component="R1")
+        ax = fig.axes[0]
+        for txt in ax.texts:
+            if txt.get_text() == "R1":
+                assert txt.get_color() == "#00ff00"
+                assert txt.get_fontsize() == 7
+                break
+        else:
+            pytest.fail("R1 text label not found")
+
+    def test_dimmed_text_alpha(self, fig, full_design):
+        """Non-highlighted component labels should be dimmed."""
+        plot_board_2d(fig, full_design, highlight_component="R1")
+        ax = fig.axes[0]
+        for txt in ax.texts:
+            if txt.get_text() in ("U1", "C1"):
+                assert txt.get_alpha() == pytest.approx(0.3)
+
+    def test_no_highlight_leaves_defaults(self, fig, full_design):
+        """Without highlight_component, text alpha should be default (None/1.0)."""
+        plot_board_2d(fig, full_design)
+        ax = fig.axes[0]
+        for txt in ax.texts:
+            if txt.get_text() == "R1":
+                assert txt.get_alpha() is None or txt.get_alpha() == pytest.approx(1.0)
+                assert txt.get_color() == "white"
+                break
+
+
+class TestHighlightComponent3D:
+    def test_renders_without_error(self, fig, full_design):
+        """Highlighting a component in 3D should not raise."""
+        plot_board_3d(fig, full_design, highlight_component="U1")
+        assert len(fig.axes) == 1
+
+    def test_nonexistent_component(self, fig, full_design):
+        """Highlighting a component that doesn't exist should not raise."""
+        plot_board_3d(fig, full_design, highlight_component="MISSING")
+        assert len(fig.axes) == 1
+
+    def test_highlighted_text_is_green(self, fig, full_design):
+        """The highlighted component label should be green in 3D."""
+        plot_board_3d(fig, full_design, highlight_component="C1")
+        ax = fig.axes[0]
+        for txt in ax.texts:
+            if txt.get_text() == "C1":
+                assert txt.get_color() == "#00ff00"
+                assert txt.get_fontsize() == 6
+                break
+        else:
+            pytest.fail("C1 text label not found")
+
+    def test_dimmed_text_has_default_color(self, fig, full_design):
+        """Non-highlighted 3D labels should remain white."""
+        plot_board_3d(fig, full_design, highlight_component="C1")
+        ax = fig.axes[0]
+        for txt in ax.texts:
+            if txt.get_text() in ("R1", "U1"):
+                assert txt.get_color() == "white"
+                assert txt.get_fontsize() == 5
+
+    def test_no_highlight_leaves_defaults(self, fig, full_design):
+        """Without highlight_component, 3D labels should use defaults."""
+        plot_board_3d(fig, full_design)
+        ax = fig.axes[0]
+        for txt in ax.texts:
+            if txt.get_text() == "U1":
+                assert txt.get_color() == "white"
+                assert txt.get_fontsize() == 5
+                break
+
+
+# ---------------------------------------------------------------------------
 # IPC-2581 parser enhancement tests
 # ---------------------------------------------------------------------------
 
