@@ -212,19 +212,13 @@ def _parse_board_outline(root: ET.Element, design: PCBDesign, unit: str) -> None
     if profile is None:
         return
 
-    points: list[tuple[float, float]] = []
-
-    for elem in profile.iter():
-        tag = _strip_namespace(elem.tag)
-        if tag in ("PolyBegin", "PolyStepSegment", "PolyStepCurve",
-                    "LineBegin", "LineEnd"):
-            x_str = elem.attrib.get("x") or elem.attrib.get("X")
-            y_str = elem.attrib.get("y") or elem.attrib.get("Y")
-            if x_str is not None and y_str is not None:
-                points.append((
-                    _convert_to_mm(float(x_str), unit),
-                    _convert_to_mm(float(y_str), unit),
-                ))
+    # Outer boundary from first Polygon child
+    polygon = _find_child(profile, "Polygon")
+    if polygon is not None:
+        points = _parse_polygon_points(polygon, unit)
+    else:
+        # Fallback: collect all points from Profile directly
+        points = _parse_polygon_points(profile, unit)
 
     if points:
         xs = [p[0] for p in points]
@@ -232,6 +226,12 @@ def _parse_board_outline(root: ET.Element, design: PCBDesign, unit: str) -> None
         design.width = max(xs) - min(xs)
         design.height = max(ys) - min(ys)
         design.outline = points
+
+    # Parse cutouts
+    for cutout in _find_children(profile, "Cutout"):
+        cut_pts = _parse_polygon_points(cutout, unit)
+        if len(cut_pts) >= 3:
+            design.outline_cutouts.append(cut_pts)
 
 
 def _parse_stackup(

@@ -352,6 +352,7 @@ class TestModelBackwardCompat:
         """PCBDesign should work without outline arg."""
         design = PCBDesign(name="test", width=10, height=10)
         assert design.outline == []
+        assert design.outline_cutouts == []
         assert design.copper_pours == []
 
     def test_pad_new_fields_defaults(self):
@@ -443,4 +444,43 @@ class TestCopperPourRendering:
         """Design with empty copper_pours should render fine."""
         design = PCBDesign(name="no_pours", width=20, height=15)
         plot_board_2d(fig, design)
+        assert len(fig.axes) == 1
+
+
+# ---------------------------------------------------------------------------
+# Board cutout rendering tests
+# ---------------------------------------------------------------------------
+
+class TestBoardCutoutRendering:
+    @pytest.fixture
+    def cutout_design(self) -> PCBDesign:
+        """Design with board outline and cutouts."""
+        return PCBDesign(
+            name="with_cutouts", width=50, height=40,
+            outline=[(0, 0), (50, 0), (50, 40), (0, 40), (0, 0)],
+            outline_cutouts=[
+                # Large center circle (simplified as octagon)
+                [(20, 15), (25, 13), (30, 15), (32, 20),
+                 (30, 25), (25, 27), (20, 25), (18, 20)],
+                # Small mounting hole
+                [(5, 5), (6, 4), (7, 5), (6, 6)],
+            ],
+        )
+
+    def test_renders_cutouts_2d(self, fig, cutout_design):
+        """2D rendering with cutouts should not raise."""
+        plot_board_2d(fig, cutout_design)
+        assert len(fig.axes) == 1
+
+    def test_renders_cutouts_3d(self, fig, cutout_design):
+        """3D rendering with cutouts should not raise."""
+        plot_board_3d(fig, cutout_design)
+        assert len(fig.axes) == 1
+
+    def test_no_cutouts_still_works(self, fig):
+        """Design without cutouts should render fine (backward compat)."""
+        design = PCBDesign(name="no_cutouts", width=20, height=15,
+                           outline=[(0, 0), (20, 0), (20, 15), (0, 15)])
+        plot_board_2d(fig, design)
+        plot_board_3d(fig, design)
         assert len(fig.axes) == 1

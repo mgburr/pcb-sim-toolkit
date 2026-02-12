@@ -153,6 +153,7 @@ class PCBDesign:
     nets: list[Net] = field(default_factory=list)
     traces: list[Trace] = field(default_factory=list)
     outline: list[tuple[float, float]] = field(default_factory=list)
+    outline_cutouts: list[list[tuple[float, float]]] = field(default_factory=list)
     packages: dict[str, PackageDef] = field(default_factory=dict)
     copper_pours: list[CopperPour] = field(default_factory=list)
 

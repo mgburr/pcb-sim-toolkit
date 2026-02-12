@@ -154,6 +154,15 @@ def plot_board_2d(
     )
     ax.add_patch(board_patch)
 
+    # --- Board cutouts ---
+    for cutout in getattr(design, "outline_cutouts", []):
+        cut_patch = MplPolygon(
+            cutout, closed=True,
+            facecolor="#1a1a2e", edgecolor="#33cc33",
+            linewidth=1.0, zorder=1.5,
+        )
+        ax.add_patch(cut_patch)
+
     # --- Copper pours ---
     for pour in getattr(design, "copper_pours", []):
         color = net_colors.get(pour.net, "#b87333")
@@ -497,6 +506,16 @@ def plot_board_3d(
         linewidths=0.5, alpha=0.3,
     )
     ax.add_collection3d(board_coll)
+
+    # --- Board cutouts ---
+    for cutout in getattr(design, "outline_cutouts", []):
+        cut_faces = _extrude_polygon(cutout, 0.01, -thickness - 0.01)
+        if cut_faces:
+            cut_coll = Poly3DCollection(
+                cut_faces, facecolors="#1a1a2e", edgecolors="#006400",
+                linewidths=0.3, alpha=1.0,
+            )
+            ax.add_collection3d(cut_coll)
 
     # --- Copper zones (flat polygons on surfaces) ---
     # Top copper surface
